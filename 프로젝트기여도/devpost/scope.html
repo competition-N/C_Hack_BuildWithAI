@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>팀 프로젝트 기여도 — Scope</title>
+  <style>
+    :root {
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --line: #e4d9c8;
+      --paper: #f7f1e6;
+      --card: #fffaf3;
+      --now: #1f6b4a;
+      --now-bg: #e7f3ec;
+      --later: #8a5a12;
+      --later-bg: #f8efd8;
+      --cut: #8d3b32;
+      --cut-bg: #f8e8e4;
+      --accent: #9a4d12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 17px/1.55 "Segoe UI", "Malgun Gothic", sans-serif;
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 40px 20px 72px;
+    }
+    .kicker {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge {
+      border: 1px solid var(--now);
+      color: var(--now);
+      background: var(--now-bg);
+      border-radius: 999px;
+      padding: 2px 8px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    h1 {
+      font-size: 40px;
+      line-height: 1.15;
+      margin: 12px 0 8px;
+      font-weight: 700;
+    }
+    .lede { font-size: 19px; margin: 0 0 28px; }
+    h2 { font-size: 22px; margin: 36px 0 10px; }
+    p { margin: 0 0 12px; }
+    .kernel {
+      background: var(--card);
+      border-left: 4px solid var(--accent);
+      padding: 16px 18px;
+      border-radius: 0 12px 12px 0;
+    }
+    figure { margin: 8px 0 0; }
+    svg { width: 100%; height: auto; display: block; }
+    figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+    .loop-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 14px; }
+    .loop-bar button {
+      font: inherit;
+      font-size: 14px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    .loop-bar button[aria-current="step"] {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: var(--ink);
+    }
+    ol.steps { margin: 0; padding-left: 1.2em; }
+    ol.steps li { margin: 0 0 8px; }
+    ol.steps li.is-current { font-weight: 650; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .card h2 { margin-top: 0; }
+    details {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin: 10px 0;
+      padding: 0 16px;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 650;
+      padding: 14px 0;
+      list-style: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+      background: var(--muted);
+    }
+    details.now summary::before { background: var(--now); }
+    details.later summary::before { background: var(--later); }
+    details.cut summary::before { background: var(--cut); }
+    details ul { margin: 0 0 14px; padding-left: 1.2em; }
+    details li { margin: 0 0 6px; }
+    .soft { color: var(--muted); }
+    footer {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    @media (max-width: 700px) {
+      h1 { font-size: 32px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="kicker">Scope <span class="badge">approved</span></p>
+    <h1>팀 프로젝트 기여도</h1>
+    <p class="lede">GitHub로 연결한 팀 프로젝트에서, 누가 실제로 일했는지 순위와 점수로 보여주고, 그 판단 옆에 기술 요약·난이도·문서·알고리즘을 같이 정리한다.</p>
+
+    <h2>핵심</h2>
+    <div class="kernel">
+      <p>버스와 무임승차를 걸러 내려고, 서로 말한 기여가 아니라 GitHub에 남은 작업으로 사람마다 기여를 보여 준다.</p>
+      <p>세부 점수와 한 일은 그 프로젝트의 기술 요약, 난이도, 문서, 알고리즘 정리와 붙어 있다. 무슨 일을 했는지와 그 일이 얼마나 어려운지가 점수를 읽는 근거가 된다.</p>
+    </div>
+
+    <h2>누가, 무엇을 하고, 무엇이 증명인가</h2>
+    <figure>
+      <svg viewBox="0 0 900 300" role="img" aria-labelledby="diagramTitle diagramDesc">
+        <title id="diagramTitle">사용자, 핵심 고리, 동작의 증거</title>
+        <desc id="diagramDesc">팀원, 팀장, 평가자가 GitHub 저장소를 연결하면 프로젝트 안 순위와 점수, 한 일, 기술 요약, 난이도, 문서, 알고리즘이 나오고, 그 한 화면이 개념 증명의 증거가 된다.</desc>
+        <rect x="16" y="36" width="230" height="210" rx="16" fill="#fffaf3" stroke="#e4d9c8"/>
+        <rect x="334" y="36" width="232" height="210" rx="16" fill="#fffaf3" stroke="#9a4d12" stroke-width="2"/>
+        <rect x="654" y="36" width="230" height="210" rx="16" fill="#fffaf3" stroke="#e4d9c8"/>
+        <text x="32" y="68" fill="#5c564c" font-size="14" font-family="Segoe UI, Malgun Gothic, sans-serif">누가 보나</text>
+        <text x="32" y="104" fill="#1c1915" font-size="22" font-family="Segoe UI, Malgun Gothic, sans-serif">팀원</text>
+        <text x="32" y="134" fill="#1c1915" font-size="22" font-family="Segoe UI, Malgun Gothic, sans-serif">팀장</text>
+        <text x="32" y="164" fill="#1c1915" font-size="22" font-family="Segoe UI, Malgun Gothic, sans-serif">평가자</text>
+        <text x="32" y="206" fill="#5c564c" font-size="14" font-family="Segoe UI, Malgun Gothic, sans-serif">점수를 나누려고 연다</text>
+        <text x="350" y="68" fill="#5c564c" font-size="14" font-family="Segoe UI, Malgun Gothic, sans-serif">핵심 고리</text>
+        <text x="350" y="104" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">1. 저장소 연결</text>
+        <text x="350" y="132" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">2. 안의 사람만 순위</text>
+        <text x="350" y="160" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">3. 점수와 한 일</text>
+        <text x="350" y="188" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">4. 기술·난이도</text>
+        <text x="350" y="214" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">   문서·알고리즘</text>
+        <text x="670" y="68" fill="#5c564c" font-size="14" font-family="Segoe UI, Malgun Gothic, sans-serif">동작의 증거</text>
+        <text x="670" y="110" fill="#1c1915" font-size="18" font-family="Segoe UI, Malgun Gothic, sans-serif">저장소 하나</text>
+        <text x="670" y="148" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">순위, 한 일,</text>
+        <text x="670" y="174" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">난이도와 기술이</text>
+        <text x="670" y="200" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">한 화면에 보인다</text>
+        <path d="M250 140 H318" stroke="#9a4d12" stroke-width="2" fill="none"/>
+        <path d="M310 134 L328 140 L310 146" fill="#9a4d12"/>
+        <path d="M570 140 H638" stroke="#9a4d12" stroke-width="2" fill="none"/>
+        <path d="M630 134 L648 140 L630 146" fill="#9a4d12"/>
+      </svg>
+      <figcaption>팀원·팀장·평가자가 저장소를 연결하고, 그 프로젝트 안의 순위와 근거가 한 화면에 보이면 개념 증명이 선다. 그림 아래 글이 같은 내용이다.</figcaption>
+    </figure>
+
+    <h2>핵심 고리, 한 단계씩</h2>
+    <div class="loop-bar" role="group" aria-label="핵심 고리 단계">
+      <button type="button" data-step="1" aria-current="step">1 연결</button>
+      <button type="button" data-step="2">2 순위</button>
+      <button type="button" data-step="3">3 점수와 한 일</button>
+      <button type="button" data-step="4">4 근거</button>
+    </div>
+    <ol class="steps">
+      <li data-step="1" class="is-current">GitHub 저장소를 연결한다.</li>
+      <li data-step="2">공유하지 않았으면 그 프로젝트 안의 사람만 순위가 나온다.</li>
+      <li data-step="3">각 사람의 세부 점수와 한 일이 보인다.</li>
+      <li data-step="4">같은 결과에서 기술 요약, 난이도, 문서, 알고리즘 정리를 본다. 팀원, 팀장, 평가자는 이 결과로 기여를 나눈다.</li>
+    </ol>
+    <p class="soft">점수를 나눠야 할 때마다 저장소를 다시 연결해 확인한다.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>누구를 위한 것인가</h2>
+        <p>대학생 팀 프로젝트의 팀원, 팀장, 과제를 평가하는 사람.</p>
+        <p>한 프로젝트 안에서 누가 실제로 일했는지 보고 점수를 나누려 한다. 지금은 GitHub를 직접 뒤지거나, 누가 뭘 했는지 팀 안에서 말로 가른다.</p>
+      </section>
+      <section class="card">
+        <h2>왜 만드는가</h2>
+        <p>프로젝트를 하면서 버스하거나 무임승차하는 사람을 걸러내기 위해 만든다.</p>
+        <p>이번 작업에서는 일단 동작하는 것을 중점으로 둔다.</p>
+        <p class="soft">보는 느낌이나 참고할 서비스는 아직 정하지 않았다.</p>
+      </section>
+    </div>
+
+    <h2>범위</h2>
+    <details class="now" open>
+      <summary>지금</summary>
+      <ul>
+        <li>GitHub 연동만.</li>
+        <li>공유하지 않은 상태에서는 그 프로젝트 안의 사람만 순위에 나온다.</li>
+        <li>사람마다 세부 점수와 한 일.</li>
+        <li>그 점수·작업과 연관된 기술 요약, 난이도, 문서 정리, 알고리즘 정리. 문서는 GitHub에 있는 문서를 정리해 보여 주는 것이다.</li>
+        <li>팀원, 팀장, 평가자는 같은 결과를 본다.</li>
+      </ul>
+    </details>
+    <details class="later">
+      <summary>나중</summary>
+      <ul>
+        <li>문서나 프로젝트를 파일로 직접 업로드.</li>
+        <li>웹사이트에 공개 업로드.</li>
+        <li>계정이나 아이디가 연동된 사람에게 전 세계 랭킹을 보여 주기.</li>
+        <li>GitLab 등 GitHub 밖의 연동.</li>
+      </ul>
+    </details>
+    <details class="cut">
+      <summary>빼는 것</summary>
+      <ul>
+        <li>역할마다 다른 화면이나 권한. 세 사람이 같은 결과를 보고 점수를 나눈다고 했고, 권한을 나누는 것은 버스가 보이게 하는 데 필요하지 않다.</li>
+        <li>공유 전 화면의 기본값을 전 세계 랭킹으로 두는 것. 전 세계 랭킹 자체는 나중에 남긴다.</li>
+      </ul>
+    </details>
+
+    <footer>
+      <p>원본은 <code>devpost/scope.md</code>이다. 이 페이지는 그 계획을 그림과 펼침으로 보는 보조 화면이며, 상태는 approved이다.</p>
+    </footer>
+  </main>
+  <script>
+    (function () {
+      var buttons = document.querySelectorAll(".loop-bar button");
+      var items = document.querySelectorAll("ol.steps li");
+      function show(step) {
+        buttons.forEach(function (button) {
+          var on = button.getAttribute("data-step") === step;
+          if (on) button.setAttribute("aria-current", "step");
+          else button.removeAttribute("aria-current");
+        });
+        items.forEach(function (item) {
+          item.classList.toggle("is-current", item.getAttribute("data-step") === step);
+        });
+      }
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          show(button.getAttribute("data-step"));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
