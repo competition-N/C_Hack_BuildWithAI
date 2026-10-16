@@ -9,3 +9,5 @@
 
 # SQLCipher database on the VM. Never commit.
 /data/
+
+node_modules/
