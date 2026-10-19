@@ -26,6 +26,7 @@ const {
   userProjects,
   addUserProject,
   ownsProject,
+  setProjectShared,
   removeUserProject,
 } = require("./src/repos");
 const { personCode, displayNameFor, validNickname, accountView, deleteAccount } = require("./src/account");
@@ -449,6 +450,18 @@ const server = http.createServer(async (request, response) => {
           failureReason: judged.ok ? null : judged.failureReason,
           project: myProjectView(user.id, user.github_login, repoId),
         });
+        return;
+      }
+
+      const shareMatch = url.pathname.match(/^\/api\/my\/projects\/(\d+)\/share$/);
+      if (request.method === "POST" && shareMatch) {
+        const repoId = Number(shareMatch[1]);
+        const payload = await readJson(request);
+        if (!setProjectShared(db, user.id, repoId, Boolean(payload.shared))) {
+          sendJson(response, 404, { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
+          return;
+        }
+        sendJson(response, 200, { ok: true, project: myProjectView(user.id, user.github_login, repoId) });
         return;
       }
 

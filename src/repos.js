@@ -75,12 +75,24 @@ function markRepoFailure(db, repoUrl, reason) {
   return repoView(db, db.prepare("SELECT * FROM repos WHERE id = ?").get(existing.id));
 }
 
+const notHiddenByOwner = `
+  NOT EXISTS (
+    SELECT 1 FROM user_projects
+    JOIN users ON users.id = user_projects.user_id
+    WHERE user_projects.repo_id = repo_people.repo_id
+      AND user_projects.shared = 0
+      AND repo_people.github_login = users.github_login
+  )
+`;
+
 function rankingRows(db) {
   return db.prepare(`
     SELECT min(repo_people.github_login) AS login, sum(repo_people.score) AS total, count(*) AS projects
     FROM repo_people
     JOIN repos ON repos.id = repo_people.repo_id
-    WHERE repos.status = '완료' AND coalesce(json_extract(repo_people.detail, '$.isAgent'), 0) = 0
+    WHERE repos.status = '완료'
+      AND coalesce(json_extract(repo_people.detail, '$.isAgent'), 0) = 0
+      AND ${notHiddenByOwner}
     GROUP BY lower(repo_people.github_login)
     ORDER BY total DESC, lower(login)
   `).all();
@@ -92,7 +104,7 @@ function personProjects(db, login) {
            repo_people.work, repo_people.detail
     FROM repo_people
     JOIN repos ON repos.id = repo_people.repo_id
-    WHERE repos.status = '완료' AND repo_people.github_login = ?
+    WHERE repos.status = '완료' AND repo_people.github_login = ? AND ${notHiddenByOwner}
     ORDER BY repo_people.score DESC
   `).all(login).map((row) => ({
     repoId: row.id,
@@ -116,12 +128,13 @@ function myRow(db, repoId, login) {
 
 function userProjects(db, userId, login) {
   return db.prepare(`
-    SELECT repos.* FROM user_projects
+    SELECT repos.*, user_projects.shared AS shared FROM user_projects
     JOIN repos ON repos.id = user_projects.repo_id
     WHERE user_projects.user_id = ?
     ORDER BY repos.updated_at DESC
   `).all(userId).map((row) => ({
     repoId: row.id,
+    shared: Boolean(row.shared),
     name: row.name,
     repoUrl: row.repo_url,
     status: row.status,
@@ -145,6 +158,11 @@ function ownsProject(db, userId, repoId) {
   return Boolean(db.prepare("SELECT 1 FROM user_projects WHERE user_id = ? AND repo_id = ?").get(userId, repoId));
 }
 
+function setProjectShared(db, userId, repoId, shared) {
+  return db.prepare("UPDATE user_projects SET shared = ? WHERE user_id = ? AND repo_id = ?")
+    .run(shared ? 1 : 0, userId, repoId).changes > 0;
+}
+
 function removeUserProject(db, userId, repoId) {
   return db.prepare("DELETE FROM user_projects WHERE user_id = ? AND repo_id = ?").run(userId, repoId).changes > 0;
 }
@@ -158,5 +176,6 @@ module.exports = {
   userProjects,
   addUserProject,
   ownsProject,
+  setProjectShared,
   removeUserProject,
 };

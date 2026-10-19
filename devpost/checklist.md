@@ -70,6 +70,7 @@ Build mode: fast
 - [ ] 프로젝트 관리에서 연결한 GitHub의 공개 저장소 목록을 불러와 골라 추가, 이름으로 찾기, 주소 입력은 접힌 칸으로 — NamDanChu로 5개 목록, 찾기, KIT_Contest 추가를 Edge로 확인. 학습자 확인 대기
 - [ ] 프로젝트 관리 상세에 기술 요약·만든 기능·난이도·알고리즘 — Edge로 확인. 학습자 확인 대기
 - [ ] `.cursor/rules` 디자인 규칙으로 다시 디자인: `design/tokens/` 토큰, AA 대비 계산, 화면마다 h1 하나, 보이는 라벨, 세 가지 너비 — 7개 화면 × 1280/900/390px 확인, 스크립트 오류 없음. 학습자 확인 대기
+- [ ] 프로젝트 안 설정에 "기여 순위에 공개" 켜기/끄기 — 끄면 내 총점 17 → 4(KIT 13점 빠짐), 다른 사람 점수 그대로, 다른 계정은 못 바꿈, 다시 켜면 돌아옴. 학습자 확인 대기
 - [ ] Final review complete — feedback resolved and learner confirms ready to ship
 
 ## Code Tour and App Map

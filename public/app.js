@@ -446,7 +446,6 @@ function projectDetail(project) {
       </div>
       <div class="actions">
         <button type="button" class="button button-primary" id="rejudge">재판단하기</button>
-        <button type="button" class="button" id="remove-project">목록에서 빼기</button>
         <button type="button" class="button" id="close-project">닫기</button>
       </div>
       ${noticeLine("project")}
@@ -464,6 +463,24 @@ function projectDetail(project) {
           </section>`
         : "<p class='muted'>이 저장소에 내 기록이 없습니다.</p>"}
       ${docs(project)}
+      <section class="section" aria-labelledby="project-settings-title">
+        <h3 id="project-settings-title">설정</h3>
+        <div class="setting-row">
+          <div class="setting-text">
+            <p><strong>기여 순위에 공개</strong> · 지금 ${project.shared ? "켜짐" : "꺼짐"}</p>
+            <p class="muted small">끄면 이 저장소의 내 점수가 기여 순위와 내 사람 화면에서 빠집니다. 같은 저장소의 다른 팀원 점수는 그대로 남습니다.</p>
+          </div>
+          <button type="button" class="button" id="share-project" aria-pressed="${project.shared ? "true" : "false"}">${project.shared ? "공개 끄기" : "공개 켜기"}</button>
+        </div>
+        ${noticeLine("share")}
+        <div class="setting-row">
+          <div class="setting-text">
+            <p><strong>목록에서 빼기</strong></p>
+            <p class="muted small">프로젝트 관리 목록에서만 빠집니다. 공개를 꺼 둔 상태였다면, 빼는 순간 내 점수가 기여 순위에 다시 나옵니다.</p>
+          </div>
+          <button type="button" class="button button-danger" id="remove-project">목록에서 빼기</button>
+        </div>
+      </section>
     </section>
   `;
 }
@@ -483,7 +500,7 @@ function projectsView() {
     ? `<ul class="project-nav">${myProjects.map((project) => `
         <li>
           <button type="button" data-open="${project.repoId}" aria-current="${project.repoId === openedRepoId ? "true" : "false"}">
-            <span>${escapeHtml(project.name)}</span>
+            <span>${escapeHtml(project.name)}${project.shared ? "" : " <span class='tag'>비공개</span>"}</span>
             <span class="num">${project.me ? `${project.me.score}점` : "-"}</span>
           </button>
         </li>
@@ -706,6 +723,22 @@ function bindProjects() {
     if (payload.ok) setNotice("project", "다시 판단했습니다.", true);
     else setNotice("project", `재판단하지 못했습니다: ${payload.failureReason || "이유를 받지 못했습니다."} 이전 결과를 보여 줍니다.`, false);
     render();
+  });
+  document.querySelector("#share-project").addEventListener("click", async () => {
+    const project = myProjects.find((item) => item.repoId === openedRepoId);
+    const { response, payload } = await api(`/api/my/projects/${openedRepoId}/share`, {
+      method: "POST",
+      body: JSON.stringify({ shared: !project.shared }),
+    });
+    notices = {};
+    if (response.ok && payload.project) {
+      myProjects = myProjects.map((item) => (item.repoId === openedRepoId ? payload.project : item));
+      setNotice("share", payload.project.shared ? "기여 순위에 다시 공개했습니다." : "기여 순위에서 이 저장소의 내 점수를 뺐습니다.", true);
+    } else {
+      setNotice("share", payload.failureReason || "바꾸지 못했습니다.", false);
+    }
+    render();
+    document.querySelector("#share-project").focus();
   });
   document.querySelector("#remove-project").addEventListener("click", async () => {
     if (!window.confirm("이 저장소를 프로젝트 관리 목록에서 뺄까요? 기여 순위의 기록은 그대로 남습니다.")) return;

@@ -133,7 +133,7 @@ SQLite 데이터베이스 파일은 SQLCipher를 적용하여 AES-256으로 디�
 - **sessions** — id, user_id, expires_at. 쿠키에는 id만 있다.
 - **repos** — id, repo_url(대소문자 무시, 하나만), name, status, failure_reason, tech_summary, difficulty, algorithms, features, updated_at. 저장소마다 가장 최근 판단 하나.
 - **repo_people** — id, repo_id, github_login(대소문자 무시), score, rank, work, detail. detail은 JSON으로 isAgent, workSource, features(name, tech, difficulty, commits, points, kind), analyzedCommits, commits, agentCommits, agentLogins, prsOpened, prsMerged, additions, deletions, filesChanged, sampledCommits를 담는다. 기여 순위는 이 표를 더한다.
-- **user_projects** — user_id, repo_id, created_at. 프로젝트 관리 목록.
+- **user_projects** — user_id, repo_id, created_at, shared(처음 1). 프로젝트 관리 목록. shared가 0이면 그 계정의 GitHub 아이디와 같은 `repo_people` 행이 기여 순위와 사람 화면에서 빠진다(`src/repos.js`의 `notHiddenByOwner`). `POST /api/my/projects/{repoId}/share`로 바꾼다.
 - **projects**, **contributions** — 이전 방식의 표. 더는 쓰지 않고, 계정 삭제 때만 지운다.
 
 재판단이 끝나기 전에 다시 열면 이전 `repos`와 `repo_people`이 그대로다. Groq만 실패하면 대체 문장을 저장하고 완료로 둔다.

@@ -94,6 +94,10 @@ function openDatabase() {
       PRIMARY KEY (user_id, repo_id)
     );
   `);
+  const userProjectColumns = db.prepare("PRAGMA table_info(user_projects)").all().map((column) => column.name);
+  if (!userProjectColumns.includes("shared")) {
+    db.exec("ALTER TABLE user_projects ADD COLUMN shared INTEGER NOT NULL DEFAULT 1");
+  }
   return db;
 }
 
