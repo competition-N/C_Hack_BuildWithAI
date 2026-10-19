@@ -46,13 +46,17 @@ function createSession(db, userId) {
   return { id, expires };
 }
 
-function userFromRequest(db, request) {
+function sessionIdFromRequest(request) {
   const header = request.headers.cookie || "";
   const sid = header.split(";").map((part) => part.trim()).find((part) => part.startsWith("sid="));
-  if (!sid) return null;
-  const id = decodeURIComponent(sid.slice(4));
+  return sid ? decodeURIComponent(sid.slice(4)) : null;
+}
+
+function userFromRequest(db, request) {
+  const id = sessionIdFromRequest(request);
+  if (!id) return null;
   const row = db.prepare(`
-    SELECT users.id, users.username
+    SELECT users.id, users.username, users.nickname, users.account_public, users.created_at
     FROM sessions
     JOIN users ON users.id = sessions.user_id
     WHERE sessions.id = ? AND sessions.expires_at > ?
@@ -68,5 +72,6 @@ module.exports = {
   recordFailure,
   clearFailures,
   createSession,
+  sessionIdFromRequest,
   userFromRequest,
 };

@@ -3,8 +3,12 @@ document.documentElement.dataset.js = "ran";
 const screen = document.querySelector("#screen");
 const topBar = document.querySelector("#top");
 const projectName = document.querySelector("#project-name");
-const navButtons = [...document.querySelectorAll(".side button")];
+const viewButtons = [...document.querySelectorAll(".side [data-view]")];
 const tabButtons = [...document.querySelectorAll(".tabs button")];
+const navLogin = document.querySelector("#nav-login");
+const navManage = document.querySelector("#nav-manage");
+const manageToggle = document.querySelector("#manage-toggle");
+const manageMenu = document.querySelector("#manage-menu");
 
 let view = "main";
 let tab = "all";
@@ -12,7 +16,9 @@ let me = null;
 let result = null;
 let projects = [];
 let publicProjects = [];
+let ownerPage = null;
 let openedId = null;
+let manageOpen = false;
 let serverDown = false;
 
 const serverNotice = `
@@ -27,35 +33,60 @@ const explanation = `
   <p class="muted">로그인 후 프로젝트를 등록하고 설정에서 공유하면, 로그인하지 않은 사람도 공개 프로젝트에서 볼 수 있습니다.</p>
 `;
 
-navButtons.forEach((button) => {
-  button.addEventListener("click", async () => {
-    view = button.dataset.view;
-    openedId = null;
-    navButtons.forEach((item) => {
-      if (item === button) item.setAttribute("aria-current", "page");
-      else item.removeAttribute("aria-current");
-    });
-    if (view === "login" && me) await loadProjects();
-    if (view === "public") await loadPublic();
-    render();
-  });
+viewButtons.forEach((button) => {
+  button.addEventListener("click", () => go(button.dataset.view));
+});
+
+manageToggle.addEventListener("click", () => {
+  manageOpen = !manageOpen;
+  syncNav();
 });
 
 tabButtons.forEach((button) => {
   button.addEventListener("click", () => {
     tab = button.dataset.tab;
-    tabButtons.forEach((item) => {
-      item.setAttribute("aria-selected", item.dataset.tab === tab ? "true" : "false");
-    });
+    syncTabs();
     render();
   });
 });
+
+async function go(next) {
+  view = next;
+  openedId = null;
+  ownerPage = null;
+  if (me && view === "login") view = "projects";
+  if (!me && (view === "projects" || view === "account")) view = "login";
+  if (view === "projects" || view === "account") manageOpen = true;
+  if (view === "projects") await loadProjects();
+  if (view === "public") await loadPublic();
+  render();
+}
+
+function syncNav() {
+  navLogin.hidden = Boolean(me);
+  navManage.hidden = !me;
+  manageToggle.setAttribute("aria-expanded", manageOpen ? "true" : "false");
+  manageMenu.hidden = !manageOpen;
+  const highlighted = view === "owner" ? "public" : view;
+  viewButtons.forEach((button) => {
+    if (button.dataset.view === highlighted) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+}
+
+function syncTabs() {
+  tabButtons.forEach((item) => {
+    item.setAttribute("aria-selected", item.dataset.tab === tab ? "true" : "false");
+  });
+}
 
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function rankingTable(rows, includeWork) {
@@ -98,11 +129,11 @@ function resultBody(data) {
   }
   if (tab === "score") return rankingTable(data.contributions, true);
   if (tab === "doc") return docs(data);
-  if (tab === "settings" && data.id) return settings(data);
+  if (tab === "settings" && data.id && view === "projects") return projectSettings(data);
   return `<p class="muted">${escapeHtml(data.status || "완료")}</p>${rankingTable(data.contributions, true)}${docs(data)}`;
 }
 
-function settings(project) {
+function projectSettings(project) {
   return `
     <section class="panel">
       <h2>설정</h2>
@@ -114,7 +145,7 @@ function settings(project) {
   `;
 }
 
-function accountForms() {
+function loginForms() {
   return `
     <h2>로그인</h2>
     <form class="stack" id="login-form">
@@ -136,29 +167,102 @@ function projectList() {
   const rows = projects.map((project) => `
     <li>
       <button type="button" data-open="${project.id}">${escapeHtml(project.name || project.repoUrl)}</button>
-      <span class="muted">${escapeHtml(project.status)}</span>
+      <span class="muted">${escapeHtml(project.status)}${project.shared ? " · 공유 중" : ""}</span>
     </li>
   `).join("");
   const opened = openedId ? projects.find((project) => project.id === openedId) : null;
   return `
-    <div class="row">
-      <h2>${escapeHtml(me.username)}의 프로젝트</h2>
-      <button type="button" id="logout">로그아웃</button>
-    </div>
+    <h2>프로젝트 관리</h2>
     ${projects.length ? `<ul class="projects">${rows}</ul>` : "<p>목록이 비어 있습니다. 아래에서 추가하세요.</p>"}
     <h3>추가하기</h3>
-    ${judgeForm("login-judge-form")}
+    ${judgeForm("projects-judge-form")}
     <div id="opened">${opened ? resultBody(opened) : ""}</div>
   `;
 }
 
+function accountSettings() {
+  const shownName = me.accountPublic ? me.nickname : me.tempNickname;
+  return `
+    <h2>계정 설정</h2>
+    <p id="account-message" class="muted" role="status"></p>
+    <section class="panel">
+      <h3>닉네임</h3>
+      <p>지금 다른 사람에게 보이는 이름: <strong>${escapeHtml(shownName)}</strong></p>
+      <form class="stack" id="nickname-form">
+        <input name="nickname" required minlength="2" maxlength="20" value="${escapeHtml(me.nickname)}" aria-label="닉네임">
+        <button type="submit">닉네임 변경</button>
+      </form>
+    </section>
+    <section class="panel">
+      <h3>계정 공개</h3>
+      <p>지금: <strong>${me.accountPublic ? "켜짐" : "꺼짐"}</strong></p>
+      <p class="muted">켜면 공개 프로젝트에 닉네임 "${escapeHtml(me.nickname)}"(으)로 보입니다. 끄면 임시 닉네임 "${escapeHtml(me.tempNickname)}"(으)로 보입니다.</p>
+      <button type="button" id="visibility">${me.accountPublic ? "계정 공개 끄기" : "계정 공개 켜기"}</button>
+    </section>
+    <section class="panel">
+      <h3>비밀번호 변경</h3>
+      <form class="stack" id="password-form">
+        <input name="currentPassword" type="password" required placeholder="지금 비밀번호" aria-label="지금 비밀번호">
+        <input name="newPassword" type="password" required minlength="8" placeholder="새 비밀번호 8자 이상" aria-label="새 비밀번호">
+        <button type="submit">비밀번호 변경</button>
+      </form>
+    </section>
+    <section class="panel">
+      <h3>계정 삭제</h3>
+      <p class="muted">계정과 등록한 프로젝트가 모두 지워집니다. 되돌릴 수 없습니다.</p>
+      <form class="stack" id="delete-form">
+        <input name="password" type="password" required placeholder="비밀번호 확인" aria-label="계정 삭제 비밀번호 확인">
+        <button type="submit" class="danger">계정 삭제</button>
+      </form>
+    </section>
+    <section class="panel">
+      <button type="button" id="logout">로그아웃</button>
+    </section>
+  `;
+}
+
+function ownerButton(owner) {
+  return `<button type="button" class="link" data-owner="${escapeHtml(owner.code)}">${escapeHtml(owner.name)}</button>`;
+}
+
+function publicList() {
+  if (!publicProjects.length) return "<h2>공개 프로젝트</h2><p>정보 없음</p>";
+  return `<h2>공개 프로젝트</h2>${publicProjects.map((project) => `
+    <article class="panel">
+      <h3>${escapeHtml(project.name)}</h3>
+      <p class="muted">등록한 사람: ${ownerButton(project.owner)}</p>
+      <p>${escapeHtml(project.techSummary)}</p>
+      ${rankingTable(project.contributions, false)}
+    </article>
+  `).join("")}`;
+}
+
+function ownerList() {
+  if (!ownerPage) return `<button type="button" class="link" id="back-public">← 공개 프로젝트</button><p>정보 없음</p>`;
+  return `
+    <button type="button" class="link" id="back-public">← 공개 프로젝트</button>
+    <h2>${escapeHtml(ownerPage.owner.name)}의 프로젝트</h2>
+    <p class="muted">공유된 프로젝트 ${ownerPage.projects.length}개</p>
+    <ul class="owner-projects">
+      ${ownerPage.projects.map((project) => `
+        <li class="panel">
+          <h3>${escapeHtml(project.name)}</h3>
+          <p>${escapeHtml(project.techSummary)}</p>
+          <p class="muted">기여자 ${project.contributions.length}명 · 1위 ${escapeHtml(project.contributions[0] ? project.contributions[0].author : "없음")}</p>
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
 function currentProject() {
-  if (view === "login" && openedId) return projects.find((project) => project.id === openedId) || null;
+  if (view === "projects" && openedId) return projects.find((project) => project.id === openedId) || null;
   if (view === "main" && result && result.name) return result;
   return null;
 }
 
 function render() {
+  syncNav();
   if (serverDown) {
     topBar.hidden = true;
     screen.innerHTML = serverNotice + explanation;
@@ -168,39 +272,54 @@ function render() {
   const showChrome = Boolean(current && current.status !== "실패" && current.ok !== false && current.name);
   topBar.hidden = !showChrome;
   if (showChrome) projectName.textContent = current.name;
+  tabButtons.forEach((button) => {
+    if (button.dataset.tab === "settings") button.hidden = view !== "projects";
+  });
 
   if (view === "public") {
-    topBar.hidden = true;
-    if (!publicProjects.length) {
-      screen.innerHTML = "<h2>공개 프로젝트</h2><p>정보 없음</p>";
-      return;
-    }
-    screen.innerHTML = `<h2>공개 프로젝트</h2>${publicProjects.map((project) => `
-      <article class="panel">
-        <h3>${escapeHtml(project.name)}</h3>
-        <p>${escapeHtml(project.techSummary)}</p>
-        ${rankingTable(project.contributions, false)}
-      </article>
-    `).join("")}`;
+    screen.innerHTML = publicList();
+    bindOwnerLinks();
     return;
   }
-
+  if (view === "owner") {
+    screen.innerHTML = ownerList();
+    document.querySelector("#back-public").addEventListener("click", () => go("public"));
+    return;
+  }
   if (view === "login") {
-    if (!me) {
-      topBar.hidden = true;
-      screen.innerHTML = accountForms();
-      bindAuth();
-      return;
-    }
+    screen.innerHTML = loginForms();
+    bindAuth();
+    return;
+  }
+  if (view === "account") {
+    screen.innerHTML = accountSettings();
+    bindAccount();
+    return;
+  }
+  if (view === "projects") {
     screen.innerHTML = projectList();
-    bindJudge("login-judge-form");
+    bindJudge("projects-judge-form");
     bindProjectList();
-    if (openedId) bindSettings();
+    if (openedId) bindProjectSettings();
     return;
   }
 
   screen.innerHTML = explanation + judgeForm("judge-form") + resultBody(result);
   bindJudge("judge-form");
+}
+
+async function api(path, options) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { "Content-Type": "application/json" },
+  });
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+  return { response, payload };
 }
 
 function bindJudge(formId) {
@@ -214,26 +333,16 @@ function bindJudge(formId) {
     pending.textContent = "진행중";
     screen.appendChild(pending);
     try {
-      const response = await fetch("/api/judge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const saved = await response.json();
-      result = saved;
+      const { payload } = await api("/api/judge", { method: "POST", body: JSON.stringify({ url }) });
+      result = payload;
       if (me) {
         await loadProjects();
-        openedId = saved.id || null;
-        view = "login";
-        navButtons.forEach((item) => {
-          if (item.dataset.view === "login") item.setAttribute("aria-current", "page");
-          else item.removeAttribute("aria-current");
-        });
+        openedId = payload.id || null;
+        view = "projects";
+        manageOpen = true;
       }
       tab = "all";
-      tabButtons.forEach((item) => {
-        item.setAttribute("aria-selected", item.dataset.tab === "all" ? "true" : "false");
-      });
+      syncTabs();
     } catch {
       serverDown = true;
     } finally {
@@ -249,80 +358,129 @@ function bindAuth() {
 
 async function submitAuth(event, path) {
   event.preventDefault();
-  const form = event.currentTarget;
-  const body = Object.fromEntries(new FormData(form).entries());
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json();
+  const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+  const { response, payload } = await api(path, { method: "POST", body: JSON.stringify(body) });
   if (!response.ok) {
     document.querySelector("#auth-message").textContent = payload.failureReason || "로그인하지 못했습니다.";
     return;
   }
   me = payload.user;
-  await loadProjects();
-  render();
+  manageOpen = true;
+  await go("projects");
 }
 
 function bindProjectList() {
-  const logout = document.querySelector("#logout");
-  if (logout) {
-    logout.addEventListener("click", async () => {
-      await fetch("/api/logout", { method: "POST" });
-      me = null;
-      projects = [];
-      openedId = null;
-      render();
-    });
-  }
   document.querySelectorAll("[data-open]").forEach((button) => {
     button.addEventListener("click", () => {
       openedId = Number(button.dataset.open);
       tab = "all";
-      tabButtons.forEach((item) => {
-        item.setAttribute("aria-selected", item.dataset.tab === "all" ? "true" : "false");
-      });
+      syncTabs();
       render();
     });
   });
 }
 
-function bindSettings() {
+function bindProjectSettings() {
   const share = document.querySelector("#share");
   const remove = document.querySelector("#remove");
-  if (!share || !remove || !openedId) return;
+  if (!share || !remove) return;
   share.addEventListener("click", async () => {
     const project = projects.find((item) => item.id === openedId);
-    const response = await fetch(`/api/projects/${openedId}/share`, {
+    const { payload } = await api(`/api/projects/${openedId}/share`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shared: !project.shared }),
     });
-    const payload = await response.json();
     if (payload.project) {
       projects = projects.map((item) => (item.id === payload.project.id ? payload.project : item));
       render();
     }
   });
   remove.addEventListener("click", async () => {
-    await fetch(`/api/projects/${openedId}`, { method: "DELETE" });
+    await api(`/api/projects/${openedId}`, { method: "DELETE" });
     openedId = null;
     await loadProjects();
     render();
   });
 }
 
+function accountMessage(text, ok) {
+  const message = document.querySelector("#account-message");
+  if (!message) return;
+  message.textContent = text;
+  message.className = ok ? "ok" : "fail";
+}
+
+function bindAccount() {
+  document.querySelector("#nickname-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const nickname = new FormData(event.currentTarget).get("nickname");
+    const { response, payload } = await api("/api/account/nickname", { method: "POST", body: JSON.stringify({ nickname }) });
+    if (!response.ok) return accountMessage(payload.failureReason || "닉네임을 바꾸지 못했습니다.", false);
+    me = payload.user;
+    render();
+    accountMessage("닉네임을 바꿨습니다.", true);
+  });
+
+  document.querySelector("#visibility").addEventListener("click", async () => {
+    const { response, payload } = await api("/api/account/visibility", {
+      method: "POST",
+      body: JSON.stringify({ accountPublic: !me.accountPublic }),
+    });
+    if (!response.ok) return accountMessage(payload.failureReason || "바꾸지 못했습니다.", false);
+    me = payload.user;
+    render();
+    accountMessage(me.accountPublic ? "계정 공개를 켰습니다." : "계정 공개를 껐습니다.", true);
+  });
+
+  document.querySelector("#password-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const body = Object.fromEntries(new FormData(form).entries());
+    const { response, payload } = await api("/api/account/password", { method: "POST", body: JSON.stringify(body) });
+    if (!response.ok) return accountMessage(payload.failureReason || "비밀번호를 바꾸지 못했습니다.", false);
+    form.reset();
+    accountMessage("비밀번호를 바꿨습니다. 다른 기기의 로그인은 끊겼습니다.", true);
+  });
+
+  document.querySelector("#delete-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!window.confirm("계정과 등록한 프로젝트가 모두 지워집니다. 정말 삭제할까요?")) return;
+    const password = new FormData(event.currentTarget).get("password");
+    const { response, payload } = await api("/api/account/delete", { method: "POST", body: JSON.stringify({ password }) });
+    if (!response.ok) return accountMessage(payload.failureReason || "계정을 삭제하지 못했습니다.", false);
+    signedOut();
+    await go("main");
+  });
+
+  document.querySelector("#logout").addEventListener("click", async () => {
+    await api("/api/logout", { method: "POST" });
+    signedOut();
+    await go("login");
+  });
+}
+
+function signedOut() {
+  me = null;
+  projects = [];
+  openedId = null;
+  manageOpen = false;
+}
+
+function bindOwnerLinks() {
+  document.querySelectorAll("[data-owner]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const { response, payload } = await api(`/api/public/owners/${button.dataset.owner}`);
+      view = "owner";
+      ownerPage = response.ok ? payload : null;
+      render();
+    });
+  });
+}
+
 async function loadProjects() {
   try {
-    const response = await fetch("/api/projects");
-    if (!response.ok) {
-      projects = [];
-      return;
-    }
-    const payload = await response.json();
-    projects = payload.projects || [];
+    const { response, payload } = await api("/api/projects");
+    projects = response.ok ? payload.projects || [] : [];
   } catch {
     projects = [];
     serverDown = true;
@@ -331,13 +489,8 @@ async function loadProjects() {
 
 async function loadPublic() {
   try {
-    const response = await fetch("/api/public");
-    if (!response.ok) {
-      publicProjects = [];
-      return;
-    }
-    const payload = await response.json();
-    publicProjects = payload.projects || [];
+    const { response, payload } = await api("/api/public");
+    publicProjects = response.ok ? payload.projects || [] : [];
   } catch {
     publicProjects = [];
     serverDown = true;
@@ -355,6 +508,7 @@ async function start() {
     render();
     return;
   }
+  manageOpen = Boolean(me);
   try {
     const latestResponse = await fetch("/api/latest");
     if (latestResponse.ok) {

@@ -49,6 +49,12 @@ function openDatabase() {
       work TEXT NOT NULL
     );
   `);
+  const userColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
+  if (!userColumns.includes("nickname")) db.exec("ALTER TABLE users ADD COLUMN nickname TEXT");
+  if (!userColumns.includes("account_public")) {
+    db.exec("ALTER TABLE users ADD COLUMN account_public INTEGER NOT NULL DEFAULT 0");
+  }
+  db.exec("UPDATE users SET nickname = username WHERE nickname IS NULL");
   return db;
 }
 

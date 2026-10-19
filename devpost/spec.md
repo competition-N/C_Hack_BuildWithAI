@@ -89,8 +89,13 @@ PRD ref: `prd.md > 설정`.
 
 ### 공개 프로젝트
 
-로그인 없이, 공유가 켜진 프로젝트의 이름, 기술 요약, 순위와 점수를 보여 준다. 없으면 "정보 없음".
+로그인 없이, 공유가 켜진 프로젝트의 이름, 기술 요약, 순위와 점수, 등록한 사람을 보여 준다. 없으면 "정보 없음". 등록한 사람은 `owner.code`(계정 번호와 가입 시각을 `SESSION_SECRET`로 HMAC한 16자리)와 `owner.name`으로 보낸다. 계정 공개가 꺼져 있으면 `owner.name`은 `익명-` + 그 코드 앞 6자리다. 닉네임을 누르면 `GET /api/public/owners/{code}`가 그 사람의 공유 프로젝트만 돌려준다. 지워진 계정의 번호를 새 계정이 다시 받아도 가입 시각이 달라 코드가 겹치지 않는다.
 PRD ref: `prd.md > 공개 프로젝트`.
+
+### 계정 설정
+
+`src/account.js`와 `POST /api/account/nickname`, `/visibility`, `/password`, `/delete`. 비밀번호 변경과 계정 삭제는 지금 비밀번호를 Argon2id로 확인하고, 로그인과 같은 5회 실패 후 15분 거절을 쓴다. 비밀번호를 바꾸면 지금 세션을 뺀 나머지 세션을 지운다. 계정 삭제는 한 트랜잭션에서 기여 행, 프로젝트, 세션, 계정을 지운다. 왼쪽의 관리 메뉴는 `public/index.html`의 `#nav-manage`이고 로그인 상태에서만 보인다.
+PRD ref: `prd.md > 관리`, `prd.md > 계정 설정`.
 
 ### 데이터베이스
 
@@ -101,7 +106,7 @@ PRD ref: `prd.md > States and Boundaries`.
 
 SQLite 데이터베이스 파일은 SQLCipher를 적용하여 AES-256으로 디스크 암호화 저장합니다. 경로는 `data/app.db`이고 Git에는 넣지 않는다. 사용자가 나갔다가 같은 계정으로 다시 들어오면 이 파일의 그 사용자 행을 다시 읽는다.
 
-- **users** — id, username, password_hash, created_at. 비밀번호 원문은 없다.
+- **users** — id, username, password_hash, created_at, nickname, account_public. 비밀번호 원문은 없다. nickname은 가입 때 아이디와 같고, account_public은 처음에 0이다. 기존 파일에는 서버가 켜질 때 두 칸을 추가한다.
 - **sessions** — id, user_id, expires_at. 쿠키에는 id만 있다.
 - **projects** — id, user_id, repo_url, status(`진행중` `완료` `실패`), failure_reason, shared, connection_ok, tech_summary, difficulty, algorithms, updated_at.
 - **contributions** — id, project_id, author, score, rank, work.

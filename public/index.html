@@ -12,7 +12,14 @@
       <p class="brand">팀 프로젝트 기여도</p>
       <button type="button" data-view="main" aria-current="page">메인</button>
       <button type="button" data-view="public">공개 프로젝트</button>
-      <button type="button" data-view="login">로그인</button>
+      <button type="button" data-view="login" id="nav-login">로그인</button>
+      <div class="manage" id="nav-manage" hidden>
+        <button type="button" id="manage-toggle" aria-expanded="false" aria-controls="manage-menu">관리</button>
+        <div class="submenu" id="manage-menu" hidden>
+          <button type="button" data-view="account">설정</button>
+          <button type="button" data-view="projects">프로젝트 관리</button>
+        </div>
+      </div>
     </nav>
     <div class="stage">
       <header class="top" id="top" hidden>

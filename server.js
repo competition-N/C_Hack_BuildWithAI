@@ -13,6 +13,7 @@ const {
   recordFailure,
   clearFailures,
   createSession,
+  sessionIdFromRequest,
   userFromRequest,
 } = require("./src/auth");
 const {
@@ -20,9 +21,12 @@ const {
   listForUser,
   latest,
   listShared,
+  listSharedByOwner,
+  sharedOwners,
   setShared,
   removeProject,
 } = require("./src/projects");
+const { ownerCode, displayName, validNickname, accountView, deleteAccount } = require("./src/account");
 
 function loadEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -39,6 +43,9 @@ function loadEnv() {
 
 loadEnv();
 
+if (!process.env.SESSION_SECRET) {
+  throw new Error("SESSION_SECRET가 없으면 서버를 시작하지 않습니다.");
+}
 const db = openDatabase();
 const publicDir = path.join(__dirname, "public");
 const types = {
@@ -92,12 +99,44 @@ function publicView(project) {
     name: project.name,
     repoUrl: project.repoUrl,
     techSummary: project.techSummary,
+    owner: {
+      code: ownerCode(project.userId, project.ownerCreatedAt),
+      name: displayName(project.userId, project.ownerCreatedAt, project.ownerNickname, project.ownerPublic),
+    },
     contributions: (project.contributions || []).map((row) => ({
       author: row.author,
       score: row.score,
       rank: row.rank,
     })),
   };
+}
+
+function clearSessionCookie() {
+  return "sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0";
+}
+
+async function verifyPassword(user, password) {
+  if (locked(user.username)) return "locked";
+  const row = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(user.id);
+  const matches = row ? await argon2.verify(row.password_hash, String(password || "")) : false;
+  if (!matches) {
+    recordFailure(user.username);
+    return "wrong";
+  }
+  clearFailures(user.username);
+  return "ok";
+}
+
+function passwordFailure(response, result) {
+  if (result === "locked") {
+    sendJson(response, 429, { ok: false, failureReason: "시도가 너무 많아 15분 동안 할 수 없습니다." });
+  } else {
+    sendJson(response, 401, { ok: false, failureReason: "지금 비밀번호가 맞지 않습니다." });
+  }
+}
+
+function freshAccount(userId) {
+  return accountView(db.prepare("SELECT id, username, nickname, account_public, created_at FROM users WHERE id = ?").get(userId));
 }
 
 const server = http.createServer(async (request, response) => {
@@ -107,8 +146,69 @@ const server = http.createServer(async (request, response) => {
 
   try {
     if (request.method === "GET" && url.pathname === "/api/me") {
-      sendJson(response, 200, { user });
+      sendJson(response, 200, { user: user ? accountView(user) : null });
       return;
+    }
+
+    if (url.pathname.startsWith("/api/account/") && request.method === "POST") {
+      if (!user) {
+        sendJson(response, 401, { ok: false, failureReason: "로그인이 필요합니다." });
+        return;
+      }
+      const payload = JSON.parse(await readBody(request) || "{}");
+
+      if (url.pathname === "/api/account/nickname") {
+        const nickname = String(payload.nickname || "").trim();
+        if (!validNickname(nickname)) {
+          sendJson(response, 400, {
+            ok: false,
+            failureReason: "닉네임은 2~20자이고, 특수문자 < > \" ' & 와 '익명-'으로 시작하는 이름은 쓸 수 없습니다.",
+          });
+          return;
+        }
+        const taken = db.prepare("SELECT id FROM users WHERE lower(nickname) = lower(?) AND id != ?").get(nickname, user.id);
+        if (taken) {
+          sendJson(response, 409, { ok: false, failureReason: "이미 쓰는 닉네임입니다." });
+          return;
+        }
+        db.prepare("UPDATE users SET nickname = ? WHERE id = ?").run(nickname, user.id);
+        sendJson(response, 200, { ok: true, user: freshAccount(user.id) });
+        return;
+      }
+
+      if (url.pathname === "/api/account/visibility") {
+        db.prepare("UPDATE users SET account_public = ? WHERE id = ?").run(payload.accountPublic ? 1 : 0, user.id);
+        sendJson(response, 200, { ok: true, user: freshAccount(user.id) });
+        return;
+      }
+
+      if (url.pathname === "/api/account/password") {
+        const next = String(payload.newPassword || "");
+        if (next.length < 8) {
+          sendJson(response, 400, { ok: false, failureReason: "새 비밀번호는 8자 이상이어야 합니다." });
+          return;
+        }
+        const checked = await verifyPassword(user, payload.currentPassword);
+        if (checked !== "ok") {
+          passwordFailure(response, checked);
+          return;
+        }
+        db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(next), user.id);
+        db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?").run(user.id, sessionIdFromRequest(request));
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
+      if (url.pathname === "/api/account/delete") {
+        const checked = await verifyPassword(user, payload.password);
+        if (checked !== "ok") {
+          passwordFailure(response, checked);
+          return;
+        }
+        deleteAccount(db, user.id);
+        sendJson(response, 200, { ok: true }, { "Set-Cookie": clearSessionCookie() });
+        return;
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/api/register") {
@@ -128,10 +228,16 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 409, { ok: false, failureReason: "이미 있는 아이디입니다." });
         return;
       }
-      const info = db.prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)")
-        .run(username, await hashPassword(password), new Date().toISOString());
+      const nicknameTaken = db.prepare("SELECT id FROM users WHERE lower(nickname) = lower(?)").get(username);
+      const info = db.prepare(`
+        INSERT INTO users (username, password_hash, created_at, nickname, account_public)
+        VALUES (?, ?, ?, ?, 0)
+      `).run(username, await hashPassword(password), new Date().toISOString(), username);
+      if (nicknameTaken) {
+        db.prepare("UPDATE users SET nickname = ? WHERE id = ?").run(`${username}_${info.lastInsertRowid}`, info.lastInsertRowid);
+      }
       const session = createSession(db, info.lastInsertRowid);
-      sendJson(response, 200, { ok: true, user: { id: info.lastInsertRowid, username } }, {
+      sendJson(response, 200, { ok: true, user: freshAccount(info.lastInsertRowid) }, {
         "Set-Cookie": sessionCookie(session, secure),
       });
       return;
@@ -154,19 +260,16 @@ const server = http.createServer(async (request, response) => {
       }
       clearFailures(username);
       const session = createSession(db, row.id);
-      sendJson(response, 200, { ok: true, user: { id: row.id, username: row.username } }, {
+      sendJson(response, 200, { ok: true, user: freshAccount(row.id) }, {
         "Set-Cookie": sessionCookie(session, secure),
       });
       return;
     }
 
     if (request.method === "POST" && url.pathname === "/api/logout") {
-      const header = request.headers.cookie || "";
-      const sid = header.split(";").map((part) => part.trim()).find((part) => part.startsWith("sid="));
-      if (sid) db.prepare("DELETE FROM sessions WHERE id = ?").run(decodeURIComponent(sid.slice(4)));
-      sendJson(response, 200, { ok: true }, {
-        "Set-Cookie": "sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
-      });
+      const sid = sessionIdFromRequest(request);
+      if (sid) db.prepare("DELETE FROM sessions WHERE id = ?").run(sid);
+      sendJson(response, 200, { ok: true }, { "Set-Cookie": clearSessionCookie() });
       return;
     }
 
@@ -186,6 +289,18 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/api/public") {
       sendJson(response, 200, { projects: listShared(db).map(publicView) });
+      return;
+    }
+
+    const ownerMatch = url.pathname.match(/^\/api\/public\/owners\/([0-9a-f]{16})$/);
+    if (request.method === "GET" && ownerMatch) {
+      const owner = sharedOwners(db).find((row) => ownerCode(row.id, row.created_at) === ownerMatch[1]);
+      const projects = owner ? listSharedByOwner(db, owner.id).map(publicView) : [];
+      if (!projects.length) {
+        sendJson(response, 404, { ok: false, failureReason: "정보 없음" });
+        return;
+      }
+      sendJson(response, 200, { owner: projects[0].owner, projects });
       return;
     }
 

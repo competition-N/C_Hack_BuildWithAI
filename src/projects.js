@@ -104,9 +104,40 @@ function latest(db, userId) {
   return mapProject(row, readContributions(db, row.id));
 }
 
+function withOwner(db, row) {
+  return {
+    ...mapProject(row, readContributions(db, row.id)),
+    ownerNickname: row.owner_nickname,
+    ownerPublic: Boolean(row.owner_public),
+    ownerCreatedAt: row.owner_created_at,
+  };
+}
+
+const sharedQuery = `
+  SELECT projects.*, users.nickname AS owner_nickname, users.account_public AS owner_public,
+         users.created_at AS owner_created_at
+  FROM projects
+  JOIN users ON users.id = projects.user_id
+  WHERE projects.shared = 1 AND projects.status = '완료'
+`;
+
 function listShared(db) {
-  return db.prepare("SELECT * FROM projects WHERE shared = 1 AND status = '완료' ORDER BY updated_at DESC").all()
-    .map((row) => mapProject(row, readContributions(db, row.id)));
+  return db.prepare(`${sharedQuery} ORDER BY projects.updated_at DESC`).all()
+    .map((row) => withOwner(db, row));
+}
+
+function listSharedByOwner(db, userId) {
+  return db.prepare(`${sharedQuery} AND projects.user_id = ? ORDER BY projects.updated_at DESC`).all(userId)
+    .map((row) => withOwner(db, row));
+}
+
+function sharedOwners(db) {
+  return db.prepare(`
+    SELECT DISTINCT users.id, users.created_at
+    FROM projects
+    JOIN users ON users.id = projects.user_id
+    WHERE projects.shared = 1 AND projects.status = '완료'
+  `).all();
 }
 
 function setShared(db, projectId, userId, shared) {
@@ -125,4 +156,13 @@ function removeProject(db, projectId, userId) {
   return true;
 }
 
-module.exports = { saveJudgment, listForUser, latest, listShared, setShared, removeProject };
+module.exports = {
+  saveJudgment,
+  listForUser,
+  latest,
+  listShared,
+  listSharedByOwner,
+  sharedOwners,
+  setShared,
+  removeProject,
+};
