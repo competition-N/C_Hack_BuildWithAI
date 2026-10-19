@@ -105,6 +105,7 @@ main {
   padding: 16px;
   margin-top: 14px;
 }
+.panel p { white-space: pre-line; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; vertical-align: top; padding: 8px 6px; border-bottom: 1px solid var(--line); }
 .work { margin: 0; padding-left: 1.1em; }

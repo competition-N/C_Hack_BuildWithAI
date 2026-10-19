@@ -36,7 +36,13 @@ async function writeBriefing({ readme, languages, files }) {
         messages: [
           {
             role: "system",
-            content: "기술 요약, 난이도, 알고리즘만 JSON으로 답한다. 키는 techSummary, difficulty, algorithms. 점수는 쓰지 않는다.",
+            content: [
+              "GitHub 저장소 정보를 보고 한국어로만 답한다. 점수나 순위는 쓰지 않는다.",
+              "JSON 객체 하나만 답한다. 키는 techSummary, difficulty, algorithms.",
+              "techSummary: 이 프로젝트가 무엇이고 어떤 기술로 만들었는지 2~3문장.",
+              "difficulty: '쉬움', '보통', '어려움' 중 하나로 시작하고, 그렇게 본 이유를 한 문장 덧붙인다.",
+              "algorithms: 이 프로젝트에 쓰인 주요 알고리즘이나 처리 방식을 짧은 항목 3~6개의 문자열 배열로.",
+            ].join("\n"),
           },
           {
             role: "user",
@@ -59,10 +65,13 @@ async function writeBriefing({ readme, languages, files }) {
     if (jsonStart < 0 || jsonEnd < jsonStart) return backup;
     const parsed = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
     if (!parsed.techSummary || !parsed.difficulty || !parsed.algorithms) return backup;
+    const algorithms = Array.isArray(parsed.algorithms)
+      ? parsed.algorithms.map((item) => `- ${String(item).trim()}`).join("\n")
+      : String(parsed.algorithms);
     return {
       techSummary: String(parsed.techSummary),
       difficulty: String(parsed.difficulty),
-      algorithms: String(parsed.algorithms),
+      algorithms,
       briefingSource: "groq",
     };
   } catch {
