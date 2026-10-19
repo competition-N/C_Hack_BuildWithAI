@@ -79,6 +79,17 @@ th { white-space: nowrap; }
 }
 .row-actions button.primary { border: 0; background: var(--accent); color: white; }
 .row-actions button:disabled { opacity: 0.6; cursor: progress; }
+.notice { color: var(--accent); font-weight: 600; }
+.notice.fail { color: #8d3b32; }
+.button-link {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #24292f;
+  color: white;
+  text-decoration: none;
+}
+.work li { margin-bottom: 6px; }
 .badge {
   display: inline-block;
   margin-top: 4px;

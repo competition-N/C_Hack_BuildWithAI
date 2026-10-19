@@ -59,6 +59,41 @@ function openDatabase() {
   if (!contributionColumns.includes("detail")) db.exec("ALTER TABLE contributions ADD COLUMN detail TEXT");
   const projectColumns = db.prepare("PRAGMA table_info(projects)").all().map((column) => column.name);
   if (!projectColumns.includes("features")) db.exec("ALTER TABLE projects ADD COLUMN features TEXT");
+  const refreshedUserColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
+  if (!refreshedUserColumns.includes("github_login")) db.exec("ALTER TABLE users ADD COLUMN github_login TEXT");
+  if (!refreshedUserColumns.includes("github_id")) db.exec("ALTER TABLE users ADD COLUMN github_id INTEGER");
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_github_id ON users(github_id) WHERE github_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS repos (
+      id INTEGER PRIMARY KEY,
+      repo_url TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name TEXT,
+      status TEXT NOT NULL,
+      failure_reason TEXT,
+      tech_summary TEXT,
+      difficulty TEXT,
+      algorithms TEXT,
+      features TEXT,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS repo_people (
+      id INTEGER PRIMARY KEY,
+      repo_id INTEGER NOT NULL,
+      github_login TEXT NOT NULL COLLATE NOCASE,
+      score INTEGER NOT NULL,
+      rank INTEGER NOT NULL,
+      work TEXT NOT NULL,
+      detail TEXT
+    );
+    CREATE INDEX IF NOT EXISTS repo_people_login ON repo_people(github_login);
+    CREATE INDEX IF NOT EXISTS repo_people_repo ON repo_people(repo_id);
+    CREATE TABLE IF NOT EXISTS user_projects (
+      user_id INTEGER NOT NULL,
+      repo_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, repo_id)
+    );
+  `);
   return db;
 }
 

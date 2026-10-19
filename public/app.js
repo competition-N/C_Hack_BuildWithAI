@@ -14,12 +14,13 @@ let view = "main";
 let tab = "all";
 let me = null;
 let result = null;
-let projects = [];
-let publicProjects = [];
-let ownerPage = null;
-let openedId = null;
+let ranking = [];
+let rankingQuery = "";
+let personPage = null;
+let myProjects = [];
+let openedRepoId = null;
 let manageOpen = false;
-let rejudgeMessage = "";
+let notice = "";
 let serverDown = false;
 
 const serverNotice = `
@@ -30,9 +31,18 @@ const serverNotice = `
 `;
 
 const explanation = `
-  <p class="lede">대학생 팀 프로젝트에서 버스와 무임승차를 가려 내는 시스템입니다. 서로 말한 기여가 아니라, 공개 GitHub 저장소에 남은 커밋과 PR로 사람마다 순위, 세부 점수, 한 일을 보여 줍니다. 그 옆에는 기술 요약, 난이도, 알고리즘을 같이 둡니다.</p>
-  <p class="muted">로그인 후 프로젝트를 등록하고 설정에서 공유하면, 로그인하지 않은 사람도 공개 프로젝트에서 볼 수 있습니다.</p>
+  <p class="lede">대학생 팀 프로젝트에서 버스와 무임승차를 가려 내는 시스템입니다. 공개 GitHub 저장소를 판단하면, 사람마다 한 일을 기능으로 나누고 기능마다 "커밋 수 × 코드 난이도"로 점수를 매겨 더합니다. 기술 요약, 만든 기능, 난이도, 알고리즘도 여기서 봅니다.</p>
+  <p class="muted">한 번 판단된 저장소의 기여자는 공개 프로젝트의 기여 순위에 올라갑니다. GitHub를 연결하고 계정 공개를 켠 사람만 닉네임으로, 나머지는 랜덤 닉네임으로 보입니다.</p>
 `;
+
+const githubNotices = {
+  linked: "GitHub를 연결했습니다.",
+  taken: "그 GitHub 계정은 이미 다른 계정에 연결되어 있습니다.",
+  denied: "GitHub 연결을 취소했습니다.",
+  error: "GitHub 연결에 실패했습니다. 다시 시도해 주세요.",
+  config: "서버에 GitHub OAuth 설정(GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET)이 없습니다.",
+  login: "먼저 로그인해 주세요.",
+};
 
 viewButtons.forEach((button) => {
   button.addEventListener("click", () => go(button.dataset.view));
@@ -53,13 +63,14 @@ tabButtons.forEach((button) => {
 
 async function go(next) {
   view = next;
-  openedId = null;
-  ownerPage = null;
+  openedRepoId = null;
+  personPage = null;
+  notice = "";
   if (me && view === "login") view = "projects";
   if (!me && (view === "projects" || view === "account")) view = "login";
   if (view === "projects" || view === "account") manageOpen = true;
-  if (view === "projects") await loadProjects();
-  if (view === "public") await loadPublic();
+  if (view === "projects") await loadMyProjects();
+  if (view === "public") await loadRanking();
   render();
 }
 
@@ -68,7 +79,7 @@ function syncNav() {
   navManage.hidden = !me;
   manageToggle.setAttribute("aria-expanded", manageOpen ? "true" : "false");
   manageMenu.hidden = !manageOpen;
-  const highlighted = view === "owner" ? "public" : view;
+  const highlighted = view === "person" ? "public" : view;
   viewButtons.forEach((button) => {
     if (button.dataset.view === highlighted) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
@@ -82,7 +93,7 @@ function syncTabs() {
 }
 
 function escapeHtml(value) {
-  return String(value || "")
+  return String(value == null ? "" : value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -90,96 +101,125 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function personCell(row) {
-  const detail = row.detail || {};
-  const agentCommits = detail.agentCommits || row.agentCommits || 0;
+function noticeLine() {
+  return notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : "";
+}
+
+function featureList(detail) {
+  if (!detail || !detail.features || !detail.features.length) return "<p class='muted small'>기능 기록 없음</p>";
+  const items = detail.features.map((feature) => `
+    <li>
+      ${escapeHtml(feature.name)} <span class="muted">(${escapeHtml(feature.tech)})</span>
+      <span class="small">커밋 ${feature.commits} × 난이도 ${feature.difficulty} = <strong>${feature.points}</strong></span>
+    </li>
+  `).join("");
+  return `<ul class="work">${items}</ul>`;
+}
+
+function agentBadges(detail) {
+  if (!detail) return "";
   const badges = [
-    agentCommits ? `<span class="badge">AI 에이전트 ${agentCommits}건 포함</span>` : "",
+    detail.agentCommits ? `<span class="badge">AI 에이전트 ${detail.agentCommits}건 포함</span>` : "",
     detail.isAgent ? `<span class="badge">AI 에이전트 · 공동 작성자 없음</span>` : "",
   ].join("");
-  return `${escapeHtml(row.author)}${badges ? `<div>${badges}</div>` : ""}`;
+  return badges ? `<div>${badges}</div>` : "";
 }
 
-function scoreCell(row) {
-  const detail = row.detail;
-  if (!detail) return `${row.score}`;
-  const formula = detail.difficulty
-    ? `작업량 ${detail.workload} × 난이도 ${detail.difficulty}`
-    : `작업량 ${detail.workload} · 난이도 분석 안 됨`;
-  return `<strong>${row.score}</strong><div class="muted small">${formula}</div>`;
-}
-
-function evidenceCell(row) {
-  const detail = row.detail;
+function evidence(detail) {
   if (!detail) return "";
   const lines = [
     `커밋 ${detail.commits}${detail.agentCommits ? ` (AI ${detail.agentCommits})` : ""} · PR ${detail.prsMerged} 합침 / ${detail.prsOpened} 열음`,
+    detail.analyzedCommits ? `모델이 기능으로 나눈 커밋 ${detail.analyzedCommits}개` : "모델 분석 안 됨",
     detail.sampledCommits
-      ? `최근 커밋 ${detail.sampledCommits}개: 파일 ${detail.filesChanged}개, +${detail.additions} / −${detail.deletions}줄`
-      : "코드 변경 표본 없음",
-  ];
-  if (detail.difficultyReason) lines.push(`난이도 이유: ${escapeHtml(detail.difficultyReason)}`);
+      ? `코드를 읽은 커밋 ${detail.sampledCommits}개: 파일 ${detail.filesChanged}개, +${detail.additions} / −${detail.deletions}줄`
+      : "",
+  ].filter(Boolean);
   return `<div class="small">${lines.join("<br>")}</div>`;
 }
 
-function rankingTable(rows, includeWork) {
+function rankingTable(rows) {
   if (!rows || !rows.length) return "<p>기여자 기록이 없습니다.</p>";
   const body = rows.map((row) => `
     <tr>
       <td>${row.rank}</td>
-      <td>${personCell(row)}</td>
-      <td>${scoreCell(row)}</td>
-      ${includeWork ? `<td>${evidenceCell(row)}</td>` : ""}
-      ${includeWork ? `<td>
-        <ul class="work">${(row.work || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-        ${row.detail && row.detail.workSource === "code" ? "<div class='muted small'>코드 변경을 읽고 요약</div>" : "<div class='muted small'>커밋 메시지</div>"}
-      </td>` : ""}
+      <td>${escapeHtml(row.author)}${agentBadges(row.detail)}</td>
+      <td><strong>${row.score}</strong></td>
+      <td>${featureList(row.detail)}</td>
+      <td>${evidence(row.detail)}</td>
     </tr>
   `).join("");
   return `<table>
-    <thead><tr><th>순위</th><th>사람</th><th>점수</th>${includeWork ? "<th>근거</th><th>한 일</th>" : ""}</tr></thead>
+    <thead><tr><th>순위</th><th>사람</th><th>점수</th><th>기능별 점수</th><th>근거</th></tr></thead>
     <tbody>${body}</tbody>
-  </table>`;
+  </table>
+  <p class="muted small">점수 = 기능마다 (그 기능의 커밋 수 × 코드 난이도 1~5)를 더한 값입니다. PR은 안의 커밋이 이미 점수에 들어가 있어 근거로만 보여 줍니다.</p>`;
 }
 
 function docs(data) {
   return `
     <section class="panel"><h2>기술 요약</h2><p>${escapeHtml(data.techSummary)}</p></section>
-    <section class="panel"><h2>만든 기능</h2><p>${escapeHtml(data.features || "아직 정리되지 않았습니다. 다시 판단하면 나옵니다.")}</p></section>
+    <section class="panel"><h2>만든 기능</h2><p>${escapeHtml(data.features || "아직 정리되지 않았습니다.")}</p></section>
     <section class="panel"><h2>난이도</h2><p>${escapeHtml(data.difficulty)}</p></section>
     <section class="panel"><h2>알고리즘</h2><p>${escapeHtml(data.algorithms)}</p></section>
   `;
 }
 
-function judgeForm(id) {
+function judgeForm(id, label) {
   return `
     <form class="judge" id="${id}">
       <input name="url" type="url" required placeholder="https://github.com/소유자/저장소" aria-label="공개 저장소 주소">
-      <button type="submit">판단하기</button>
+      <button type="submit">${label}</button>
     </form>
   `;
 }
 
-function resultBody(data) {
-  if (!data) return "";
-  if (data.status === "실패" || data.ok === false) {
-    return `<section class="panel fail"><h2>실패</h2><p>${escapeHtml(data.failureReason)}</p></section>`;
+function mainResult() {
+  if (!result) return "";
+  if (result.ok === false) {
+    return `<section class="panel fail"><h2>실패</h2><p>${escapeHtml(result.failureReason)}</p></section>`;
   }
-  if (tab === "score") return rankingTable(data.contributions, true);
-  if (tab === "doc") return docs(data);
-  if (tab === "settings" && data.id && view === "projects") return projectSettings(data);
-  return `<p class="muted">${escapeHtml(data.status || "완료")}</p>${rankingTable(data.contributions, true)}${docs(data)}`;
+  if (tab === "score") return rankingTable(result.contributions);
+  if (tab === "doc") return docs(result);
+  return `<p class="muted">완료</p>${rankingTable(result.contributions)}${docs(result)}`;
 }
 
-function projectSettings(project) {
+function rankingView() {
+  const rows = ranking.map((person) => `
+    <tr>
+      <td>${person.rank}</td>
+      <td><button type="button" class="link" data-person="${escapeHtml(person.code)}">${escapeHtml(person.name)}</button></td>
+      <td><strong>${person.total}</strong></td>
+      <td>${person.projects}</td>
+    </tr>
+  `).join("");
   return `
-    <section class="panel">
-      <h2>설정</h2>
-      <p>연동 확인: ${project.connectionOk ? "연결됨" : "연결 안 됨"}</p>
-      <p>공개: ${project.shared ? "로그인하지 않은 사람도 봅니다" : "공개 프로젝트에 없습니다"}</p>
-      <button type="button" id="share">${project.shared ? "비공개로 전환" : "공유하기"}</button>
-      <button type="button" id="remove">삭제</button>
-    </section>
+    <h2>기여 순위</h2>
+    <p class="muted">판단된 모든 저장소의 점수를 사람별로 더한 순위입니다. 이름을 누르면 그 사람이 한 프로젝트가 나옵니다.</p>
+    <form class="judge" id="ranking-search" role="search">
+      <input name="q" type="search" value="${escapeHtml(rankingQuery)}" placeholder="닉네임 검색" aria-label="닉네임 검색">
+      <button type="submit">검색</button>
+    </form>
+    ${ranking.length
+      ? `<table><thead><tr><th>순위</th><th>닉네임</th><th>총점</th><th>프로젝트</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<p>${rankingQuery ? "검색 결과가 없습니다." : "정보 없음"}</p>`}
+  `;
+}
+
+function personView() {
+  if (!personPage) return `<button type="button" class="link" id="back-ranking">← 기여 순위</button><p>정보 없음</p>`;
+  const { person, projects } = personPage;
+  return `
+    <button type="button" class="link" id="back-ranking">← 기여 순위</button>
+    <h2>${escapeHtml(person.name)}</h2>
+    <p class="muted">전체 ${person.rank}위 · 총점 <strong>${person.total}</strong> · 프로젝트 ${person.projects}개</p>
+    <ul class="owner-projects">
+      ${projects.map((project) => `
+        <li class="panel">
+          <h3>${escapeHtml(project.name)} <span class="muted small">${project.score}점 · 저장소 안 ${project.rank}위</span></h3>
+          ${featureList(project.detail)}
+        </li>
+      `).join("")}
+    </ul>
   `;
 }
 
@@ -201,40 +241,34 @@ function loginForms() {
   `;
 }
 
-function projectList() {
-  const rows = projects.map((project) => `
-    <li>
-      <button type="button" data-open="${project.id}">${escapeHtml(project.name || project.repoUrl)}</button>
-      <span class="muted">${escapeHtml(project.status)}${project.shared ? " · 공유 중" : ""}</span>
-    </li>
-  `).join("");
-  const opened = openedId ? projects.find((project) => project.id === openedId) : null;
-  const action = opened
-    ? `
-      <div class="row-actions">
-        <button type="button" id="rejudge" class="primary">재판단하기</button>
-        <button type="button" id="close-project">닫기</button>
-        <span id="rejudge-status" class="muted" role="status">${escapeHtml(rejudgeMessage)}</span>
-      </div>
-      <p class="muted small">${escapeHtml(opened.repoUrl)}을 다시 판단합니다. 실패하면 이전 결과는 그대로 남습니다.</p>
-    `
-    : `<h3>추가하기</h3>${judgeForm("projects-judge-form")}`;
+function githubSection() {
+  if (me.githubLogin) {
+    return `
+      <p>연결됨: <strong>${escapeHtml(me.githubLogin)}</strong></p>
+      <button type="button" id="github-disconnect">연결 해제</button>
+    `;
+  }
+  if (!me.oauthReady) {
+    return `<p class="fail">서버에 GitHub OAuth 설정이 없어 연결할 수 없습니다. <code>.env</code>에 <code>GITHUB_CLIENT_ID</code>와 <code>GITHUB_CLIENT_SECRET</code>를 넣고 서버를 다시 켜 주세요.</p>`;
+  }
   return `
-    <h2>프로젝트 관리</h2>
-    ${projects.length ? `<ul class="projects">${rows}</ul>` : "<p>목록이 비어 있습니다. 아래에서 추가하세요.</p>"}
-    ${action}
-    <div id="opened">${opened ? resultBody(opened) : ""}</div>
+    <p class="muted">연결하면 GitHub가 로그인한 본인의 아이디만 알려 줍니다. 남의 아이디는 연결할 수 없습니다.</p>
+    <a class="button-link" href="/api/github/connect">GitHub로 연결</a>
   `;
 }
 
 function accountSettings() {
-  const shownName = me.accountPublic ? me.nickname : me.tempNickname;
+  const shownName = me.githubLogin ? (me.accountPublic ? me.nickname : me.randomNickname) : null;
   return `
     <h2>계정 설정</h2>
-    <p id="account-message" class="muted" role="status"></p>
+    ${noticeLine()}
+    <section class="panel">
+      <h3>GitHub 연결</h3>
+      ${githubSection()}
+    </section>
     <section class="panel">
       <h3>닉네임</h3>
-      <p>지금 다른 사람에게 보이는 이름: <strong>${escapeHtml(shownName)}</strong></p>
+      <p>${shownName ? `기여 순위에 보이는 이름: <strong>${escapeHtml(shownName)}</strong>` : "GitHub를 연결하면 기여 순위에 나옵니다."}</p>
       <form class="stack" id="nickname-form">
         <input name="nickname" required minlength="2" maxlength="20" value="${escapeHtml(me.nickname)}" aria-label="닉네임">
         <button type="submit">닉네임 변경</button>
@@ -243,7 +277,7 @@ function accountSettings() {
     <section class="panel">
       <h3>계정 공개</h3>
       <p>지금: <strong>${me.accountPublic ? "켜짐" : "꺼짐"}</strong></p>
-      <p class="muted">켜면 공개 프로젝트에 닉네임 "${escapeHtml(me.nickname)}"(으)로 보입니다. 끄면 임시 닉네임 "${escapeHtml(me.tempNickname)}"(으)로 보입니다.</p>
+      <p class="muted">켜면 기여 순위에 닉네임 "${escapeHtml(me.nickname)}"(으)로 보입니다. 끄면 랜덤 닉네임${me.randomNickname ? ` "${escapeHtml(me.randomNickname)}"` : ""}(으)로 보입니다.</p>
       <button type="button" id="visibility">${me.accountPublic ? "계정 공개 끄기" : "계정 공개 켜기"}</button>
     </section>
     <section class="panel">
@@ -256,7 +290,7 @@ function accountSettings() {
     </section>
     <section class="panel">
       <h3>계정 삭제</h3>
-      <p class="muted">계정과 등록한 프로젝트가 모두 지워집니다. 되돌릴 수 없습니다.</p>
+      <p class="muted">계정과 프로젝트 관리 목록이 지워집니다. 판단된 저장소의 GitHub 기록은 남고, 순위에는 랜덤 닉네임으로 보입니다.</p>
       <form class="stack" id="delete-form">
         <input name="password" type="password" required placeholder="비밀번호 확인" aria-label="계정 삭제 비밀번호 확인">
         <button type="submit" class="danger">계정 삭제</button>
@@ -268,44 +302,52 @@ function accountSettings() {
   `;
 }
 
-function ownerButton(owner) {
-  return `<button type="button" class="link" data-owner="${escapeHtml(owner.code)}">${escapeHtml(owner.name)}</button>`;
-}
-
-function publicList() {
-  if (!publicProjects.length) return "<h2>공개 프로젝트</h2><p>정보 없음</p>";
-  return `<h2>공개 프로젝트</h2>${publicProjects.map((project) => `
-    <article class="panel">
-      <h3>${escapeHtml(project.name)}</h3>
-      <p class="muted">등록한 사람: ${ownerButton(project.owner)}</p>
-      <p>${escapeHtml(project.techSummary)}</p>
-      ${rankingTable(project.contributions, false)}
-    </article>
-  `).join("")}`;
-}
-
-function ownerList() {
-  if (!ownerPage) return `<button type="button" class="link" id="back-public">← 공개 프로젝트</button><p>정보 없음</p>`;
+function myProjectCard(project) {
+  if (!project.me) return "<p>이 저장소에 내 기록이 없습니다.</p>";
   return `
-    <button type="button" class="link" id="back-public">← 공개 프로젝트</button>
-    <h2>${escapeHtml(ownerPage.owner.name)}의 프로젝트</h2>
-    <p class="muted">공유된 프로젝트 ${ownerPage.projects.length}개</p>
-    <ul class="owner-projects">
-      ${ownerPage.projects.map((project) => `
-        <li class="panel">
-          <h3>${escapeHtml(project.name)}</h3>
-          <p>${escapeHtml(project.techSummary)}</p>
-          <p class="muted">기여자 ${project.contributions.length}명 · 1위 ${escapeHtml(project.contributions[0] ? project.contributions[0].author : "없음")}</p>
-        </li>
-      `).join("")}
-    </ul>
+    <section class="panel">
+      <h3>내 점수 <strong>${project.me.score}</strong> <span class="muted small">저장소 안 ${project.me.rank}위 / ${project.peopleCount}명</span></h3>
+      ${agentBadges(project.me.detail)}
+      ${featureList(project.me.detail)}
+      ${evidence(project.me.detail)}
+    </section>
+    <p class="muted small">기술 요약, 만든 기능, 다른 팀원의 점수는 메인에서 이 저장소를 판단하면 볼 수 있습니다.</p>
   `;
 }
 
-function currentProject() {
-  if (view === "projects" && openedId) return projects.find((project) => project.id === openedId) || null;
-  if (view === "main" && result && result.name) return result;
-  return null;
+function projectsView() {
+  if (!me.githubLogin) {
+    return `
+      <h2>프로젝트 관리</h2>
+      <p>프로젝트 관리는 내 GitHub 아이디의 기여만 모아 봅니다. 먼저 GitHub를 연결해 주세요.</p>
+      <button type="button" class="link" id="to-account">관리 > 설정으로 가기</button>
+    `;
+  }
+  const rows = myProjects.map((project) => `
+    <li>
+      <button type="button" data-open="${project.repoId}">${escapeHtml(project.name)}</button>
+      <span class="muted">${project.me ? `${project.me.score}점` : "기록 없음"}${project.failureReason ? " · 마지막 재판단 실패" : ""}</span>
+    </li>
+  `).join("");
+  const opened = myProjects.find((project) => project.repoId === openedRepoId) || null;
+  const action = opened
+    ? `
+      <div class="row-actions">
+        <button type="button" id="rejudge" class="primary">재판단하기</button>
+        <button type="button" id="remove-project">목록에서 빼기</button>
+        <button type="button" id="close-project">닫기</button>
+      </div>
+      <p class="muted small">${escapeHtml(opened.repoUrl)}</p>
+    `
+    : `<h3>추가하기</h3><p class="muted small">${escapeHtml(me.githubLogin)}이(가) 기여한 공개 저장소만 추가됩니다.</p>${judgeForm("projects-judge-form", "추가하기")}`;
+  return `
+    <h2>프로젝트 관리</h2>
+    <p class="muted">${escapeHtml(me.githubLogin)}의 기여</p>
+    ${noticeLine()}
+    ${myProjects.length ? `<ul class="projects">${rows}</ul>` : "<p>목록이 비어 있습니다.</p>"}
+    ${action}
+    ${opened ? myProjectCard(opened) : ""}
+  `;
 }
 
 function render() {
@@ -315,22 +357,18 @@ function render() {
     screen.innerHTML = serverNotice + explanation;
     return;
   }
-  const current = currentProject();
-  const showChrome = Boolean(current && current.status !== "실패" && current.ok !== false && current.name);
+  const showChrome = view === "main" && result && result.ok !== false && result.name;
   topBar.hidden = !showChrome;
-  if (showChrome) projectName.textContent = current.name;
-  tabButtons.forEach((button) => {
-    if (button.dataset.tab === "settings") button.hidden = view !== "projects";
-  });
+  if (showChrome) projectName.textContent = result.name;
 
   if (view === "public") {
-    screen.innerHTML = publicList();
-    bindOwnerLinks();
+    screen.innerHTML = rankingView();
+    bindRanking();
     return;
   }
-  if (view === "owner") {
-    screen.innerHTML = ownerList();
-    document.querySelector("#back-public").addEventListener("click", () => go("public"));
+  if (view === "person") {
+    screen.innerHTML = personView();
+    document.querySelector("#back-ranking").addEventListener("click", () => go("public"));
     return;
   }
   if (view === "login") {
@@ -344,18 +382,13 @@ function render() {
     return;
   }
   if (view === "projects") {
-    screen.innerHTML = projectList();
-    bindJudge("projects-judge-form");
-    bindProjectList();
-    if (openedId) {
-      bindProjectSettings();
-      bindRejudge();
-    }
+    screen.innerHTML = projectsView();
+    bindProjects();
     return;
   }
 
-  screen.innerHTML = explanation + judgeForm("judge-form") + resultBody(result);
-  bindJudge("judge-form");
+  screen.innerHTML = explanation + judgeForm("judge-form", "판단하기") + mainResult();
+  bindMainJudge();
 }
 
 async function api(path, options) {
@@ -372,25 +405,23 @@ async function api(path, options) {
   return { response, payload };
 }
 
-function bindJudge(formId) {
-  const judge = document.querySelector(`#${formId}`);
-  if (!judge) return;
-  judge.addEventListener("submit", async (event) => {
+function pending(text) {
+  const line = document.createElement("p");
+  line.className = "notice";
+  line.textContent = text;
+  screen.appendChild(line);
+  screen.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+}
+
+function bindMainJudge() {
+  const form = document.querySelector("#judge-form");
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const url = new FormData(judge).get("url");
-    const pending = document.createElement("p");
-    pending.id = "pending";
-    pending.textContent = "진행중";
-    screen.appendChild(pending);
+    const url = new FormData(form).get("url");
+    pending("진행중 — 코드를 읽고 기능별로 나눕니다. 팀원이 많으면 1~2분 걸릴 수 있습니다.");
     try {
       const { payload } = await api("/api/judge", { method: "POST", body: JSON.stringify({ url }) });
       result = payload;
-      if (me) {
-        await loadProjects();
-        openedId = payload.id || null;
-        view = "projects";
-        manageOpen = true;
-      }
       tab = "all";
       syncTabs();
     } catch {
@@ -398,6 +429,23 @@ function bindJudge(formId) {
     } finally {
       render();
     }
+  });
+}
+
+function bindRanking() {
+  document.querySelector("#ranking-search").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    rankingQuery = String(new FormData(event.currentTarget).get("q") || "").trim();
+    await loadRanking();
+    render();
+  });
+  document.querySelectorAll("[data-person]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const { response, payload } = await api(`/api/ranking/${button.dataset.person}`);
+      view = "person";
+      personPage = response.ok ? payload : null;
+      render();
+    });
   });
 }
 
@@ -416,91 +464,85 @@ async function submitAuth(event, path) {
   }
   me = payload.user;
   manageOpen = true;
-  await go("projects");
+  await go(me.githubLogin ? "projects" : "account");
 }
 
-function bindProjectList() {
+function bindProjects() {
+  const toAccount = document.querySelector("#to-account");
+  if (toAccount) {
+    toAccount.addEventListener("click", () => go("account"));
+    return;
+  }
   document.querySelectorAll("[data-open]").forEach((button) => {
     button.addEventListener("click", () => {
-      openedId = Number(button.dataset.open);
-      rejudgeMessage = "";
-      tab = "all";
-      syncTabs();
+      openedRepoId = Number(button.dataset.open);
+      notice = "";
       render();
     });
   });
-}
-
-function bindRejudge() {
+  const add = document.querySelector("#projects-judge-form");
+  if (add) {
+    add.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const url = new FormData(add).get("url");
+      pending("진행중 — 저장소 전체를 판단한 뒤 내 기여만 가져옵니다.");
+      const { payload } = await api("/api/my/projects", { method: "POST", body: JSON.stringify({ url }) });
+      await loadMyProjects();
+      if (payload.ok && payload.project) {
+        openedRepoId = payload.project.repoId;
+        notice = "추가했습니다.";
+      } else {
+        notice = payload.failureReason || "추가하지 못했습니다.";
+      }
+      render();
+    });
+  }
   const rejudge = document.querySelector("#rejudge");
-  const close = document.querySelector("#close-project");
-  if (!rejudge || !close) return;
-  close.addEventListener("click", () => {
-    openedId = null;
-    rejudgeMessage = "";
+  if (!rejudge) return;
+  rejudge.addEventListener("click", async () => {
+    pending("진행중 — 다시 판단하고 있습니다.");
+    const { payload } = await api(`/api/my/projects/${openedRepoId}/rejudge`, { method: "POST" });
+    await loadMyProjects();
+    notice = payload.ok ? "다시 판단했습니다." : `재판단 실패: ${payload.failureReason || "이유를 받지 못했습니다."} 이전 결과를 보여 줍니다.`;
     render();
   });
-  rejudge.addEventListener("click", async () => {
-    const project = projects.find((item) => item.id === openedId);
-    if (!project) return;
-    rejudge.disabled = true;
-    close.disabled = true;
-    document.querySelector("#rejudge-status").textContent = "진행중";
-    try {
-      const { payload } = await api("/api/judge", { method: "POST", body: JSON.stringify({ url: project.repoUrl }) });
-      await loadProjects();
-      openedId = payload.id || project.id;
-      if (payload.status === "실패") rejudgeMessage = `재판단 실패: ${payload.failureReason || "이유를 받지 못했습니다."}`;
-      else if (payload.failureReason) rejudgeMessage = `재판단 실패: ${payload.failureReason} 이전 결과를 보여 줍니다.`;
-      else rejudgeMessage = "다시 판단했습니다.";
-      tab = "all";
-      syncTabs();
-    } catch {
-      serverDown = true;
-    } finally {
-      render();
-    }
+  document.querySelector("#remove-project").addEventListener("click", async () => {
+    await api(`/api/my/projects/${openedRepoId}`, { method: "DELETE" });
+    openedRepoId = null;
+    notice = "목록에서 뺐습니다. 기여 순위의 GitHub 기록은 그대로입니다.";
+    await loadMyProjects();
+    render();
   });
-}
-
-function bindProjectSettings() {
-  const share = document.querySelector("#share");
-  const remove = document.querySelector("#remove");
-  if (!share || !remove) return;
-  share.addEventListener("click", async () => {
-    const project = projects.find((item) => item.id === openedId);
-    const { payload } = await api(`/api/projects/${openedId}/share`, {
-      method: "POST",
-      body: JSON.stringify({ shared: !project.shared }),
-    });
-    if (payload.project) {
-      projects = projects.map((item) => (item.id === payload.project.id ? payload.project : item));
-      render();
-    }
-  });
-  remove.addEventListener("click", async () => {
-    await api(`/api/projects/${openedId}`, { method: "DELETE" });
-    openedId = null;
-    await loadProjects();
+  document.querySelector("#close-project").addEventListener("click", () => {
+    openedRepoId = null;
+    notice = "";
     render();
   });
 }
 
 function accountMessage(text, ok) {
-  const message = document.querySelector("#account-message");
-  if (!message) return;
-  message.textContent = text;
-  message.className = ok ? "ok" : "fail";
+  notice = text;
+  render();
+  const line = screen.querySelector(".notice");
+  if (line) line.classList.toggle("fail", !ok);
 }
 
 function bindAccount() {
+  const disconnect = document.querySelector("#github-disconnect");
+  if (disconnect) {
+    disconnect.addEventListener("click", async () => {
+      const { payload } = await api("/api/account/github/disconnect", { method: "POST" });
+      if (payload.user) me = payload.user;
+      accountMessage("GitHub 연결을 해제했습니다.", true);
+    });
+  }
+
   document.querySelector("#nickname-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const nickname = new FormData(event.currentTarget).get("nickname");
     const { response, payload } = await api("/api/account/nickname", { method: "POST", body: JSON.stringify({ nickname }) });
     if (!response.ok) return accountMessage(payload.failureReason || "닉네임을 바꾸지 못했습니다.", false);
     me = payload.user;
-    render();
     accountMessage("닉네임을 바꿨습니다.", true);
   });
 
@@ -511,23 +553,20 @@ function bindAccount() {
     });
     if (!response.ok) return accountMessage(payload.failureReason || "바꾸지 못했습니다.", false);
     me = payload.user;
-    render();
     accountMessage(me.accountPublic ? "계정 공개를 켰습니다." : "계정 공개를 껐습니다.", true);
   });
 
   document.querySelector("#password-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = event.currentTarget;
-    const body = Object.fromEntries(new FormData(form).entries());
+    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
     const { response, payload } = await api("/api/account/password", { method: "POST", body: JSON.stringify(body) });
     if (!response.ok) return accountMessage(payload.failureReason || "비밀번호를 바꾸지 못했습니다.", false);
-    form.reset();
     accountMessage("비밀번호를 바꿨습니다. 다른 기기의 로그인은 끊겼습니다.", true);
   });
 
   document.querySelector("#delete-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!window.confirm("계정과 등록한 프로젝트가 모두 지워집니다. 정말 삭제할까요?")) return;
+    if (!window.confirm("계정과 프로젝트 관리 목록이 지워집니다. 정말 삭제할까요?")) return;
     const password = new FormData(event.currentTarget).get("password");
     const { response, payload } = await api("/api/account/delete", { method: "POST", body: JSON.stringify({ password }) });
     if (!response.ok) return accountMessage(payload.failureReason || "계정을 삭제하지 못했습니다.", false);
@@ -544,38 +583,31 @@ function bindAccount() {
 
 function signedOut() {
   me = null;
-  projects = [];
-  openedId = null;
+  myProjects = [];
+  openedRepoId = null;
   manageOpen = false;
 }
 
-function bindOwnerLinks() {
-  document.querySelectorAll("[data-owner]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const { response, payload } = await api(`/api/public/owners/${button.dataset.owner}`);
-      view = "owner";
-      ownerPage = response.ok ? payload : null;
-      render();
-    });
-  });
-}
-
-async function loadProjects() {
+async function loadMyProjects() {
+  if (!me || !me.githubLogin) {
+    myProjects = [];
+    return;
+  }
   try {
-    const { response, payload } = await api("/api/projects");
-    projects = response.ok ? payload.projects || [] : [];
+    const { response, payload } = await api("/api/my/projects");
+    myProjects = response.ok ? payload.projects || [] : [];
   } catch {
-    projects = [];
+    myProjects = [];
     serverDown = true;
   }
 }
 
-async function loadPublic() {
+async function loadRanking() {
   try {
-    const { response, payload } = await api("/api/public");
-    publicProjects = response.ok ? payload.projects || [] : [];
+    const { response, payload } = await api(`/api/ranking?q=${encodeURIComponent(rankingQuery)}`);
+    ranking = response.ok ? payload.people || [] : [];
   } catch {
-    publicProjects = [];
+    ranking = [];
     serverDown = true;
   }
 }
@@ -592,16 +624,13 @@ async function start() {
     return;
   }
   manageOpen = Boolean(me);
-  try {
-    const latestResponse = await fetch("/api/latest");
-    if (latestResponse.ok) {
-      const latestPayload = await latestResponse.json();
-      if (latestPayload.project) {
-        result = { ...latestPayload.project, ok: latestPayload.project.status !== "실패" };
-      }
-    }
-  } catch {
-    result = null;
+  const githubResult = new URLSearchParams(window.location.search).get("github");
+  if (githubResult) {
+    window.history.replaceState(null, "", "/");
+    await go(me ? "account" : "login");
+    notice = githubNotices[githubResult] || "";
+    render();
+    return;
   }
   render();
 }

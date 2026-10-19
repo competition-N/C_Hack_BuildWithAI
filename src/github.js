@@ -1,8 +1,9 @@
 const AGENT_LOGIN = /^(cursoragent|copilot.*|claude.*|codex.*|devin.*|openhands.*|sweep.*)$|\[bot\]$/i;
 const SAMPLED_PEOPLE = 6;
-const SAMPLES_PER_PERSON = 5;
-const FILES_PER_SAMPLE = 6;
-const PATCH_CHARS = 400;
+const LISTED_PER_PERSON = 40;
+const SAMPLES_PER_PERSON = 3;
+const FILES_PER_SAMPLE = 4;
+const PATCH_CHARS = 250;
 
 function parseRepoUrl(input) {
   const trimmed = String(input || "")
@@ -112,11 +113,21 @@ async function inspectRepo(url) {
           additions: 0,
           deletions: 0,
           files: new Set(),
+          listed: [],
+          seen: new Set(),
           samples: [],
           messages: [],
         });
       }
       return people.get(login);
+    };
+    const list = (row, commit, viaAgent) => {
+      if (row.seen.has(commit.sha) || row.listed.length >= LISTED_PER_PERSON) return;
+      const message = firstLine(commit.commit && commit.commit.message);
+      if (!message) return;
+      row.seen.add(commit.sha);
+      row.listed.push({ sha: commit.sha, message, viaAgent });
+      if (row.messages.length < 5) row.messages.push(message);
     };
 
     const knownLogins = [
@@ -141,6 +152,7 @@ async function inspectRepo(url) {
         row.commits += 1;
         row.agentCommits += 1;
         row.agentLogins.add(agent.login);
+        list(row, commit, agent.login);
         attributed += 1;
       }
       const remaining = (agent.contributions || 0) - attributed;
@@ -159,27 +171,27 @@ async function inspectRepo(url) {
       if (commit.parents && commit.parents.length > 1) continue;
       const owner = humanFor(commit, knownLogins);
       if (!owner) continue;
-      const row = ensure(owner.login);
-      const message = firstLine(commit.commit && commit.commit.message);
-      if (message && row.messages.length < 5) row.messages.push(message);
-      if (row.samples.length < SAMPLES_PER_PERSON) {
-        row.samples.push({ sha: commit.sha, message, viaAgent: owner.viaAgent });
-      }
+      list(ensure(owner.login), commit, owner.viaAgent);
     }
 
     const ranked = [...people.values()]
-      .filter((row) => !row.isAgent)
-      .sort((a, b) => (b.commits + b.prsMerged) - (a.commits + a.prsMerged))
+      .filter((row) => !row.isAgent && row.commits > 0)
+      .sort((a, b) => b.commits - a.commits)
       .slice(0, SAMPLED_PEOPLE);
 
-    await Promise.all(ranked.filter((row) => !row.samples.length).map(async (row) => {
-      const authored = await github(`${base}/commits?author=${encodeURIComponent(row.author)}&per_page=${SAMPLES_PER_PERSON}`).catch(() => []);
-      for (const commit of authored || []) {
-        const message = firstLine(commit.commit && commit.commit.message);
-        if (message && row.messages.length < 5) row.messages.push(message);
-        row.samples.push({ sha: commit.sha, message, viaAgent: null });
-      }
-    }));
+    await Promise.all(ranked
+      .filter((row) => row.listed.length < Math.min(row.commits, LISTED_PER_PERSON))
+      .map(async (row) => {
+        const authored = await github(`${base}/commits?author=${encodeURIComponent(row.author)}&per_page=${LISTED_PER_PERSON}`).catch(() => []);
+        for (const commit of authored || []) {
+          if (commit.parents && commit.parents.length > 1) continue;
+          list(row, commit, null);
+        }
+      }));
+
+    for (const row of ranked) {
+      row.samples = row.listed.slice(0, SAMPLES_PER_PERSON).map((item) => ({ ...item }));
+    }
 
     await Promise.all(ranked.flatMap((row) => row.samples.map(async (sample) => {
       try {
@@ -211,7 +223,9 @@ async function inspectRepo(url) {
       filesChanged: row.files.size,
       sampledCommits: row.samples.filter((sample) => sample.files && sample.files.length).length,
       messages: row.messages,
+      listed: row.listed.map(({ sha, message }) => ({ sha, message })),
       samples: row.samples,
+      analyzable: ranked.includes(row),
     }));
 
     const fileNames = Array.isArray(contents) ? contents.map((item) => item.name).filter(Boolean) : [];

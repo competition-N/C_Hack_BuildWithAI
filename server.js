@@ -18,16 +18,18 @@ const {
   userFromRequest,
 } = require("./src/auth");
 const {
-  saveJudgment,
-  listForUser,
-  latest,
-  listShared,
-  listSharedByOwner,
-  sharedOwners,
-  setShared,
-  removeProject,
-} = require("./src/projects");
-const { ownerCode, displayName, validNickname, accountView, deleteAccount } = require("./src/account");
+  saveRepo,
+  markRepoFailure,
+  rankingRows,
+  personProjects,
+  myRow,
+  userProjects,
+  addUserProject,
+  ownsProject,
+  removeUserProject,
+} = require("./src/repos");
+const { personCode, displayNameFor, validNickname, accountView, deleteAccount } = require("./src/account");
+const { oauthReady, authorizeUrl, takeState, githubIdentity } = require("./src/oauth");
 
 function loadEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -64,6 +66,11 @@ function sendJson(response, status, payload, extraHeaders) {
   send(response, status, JSON.stringify(payload), "application/json; charset=utf-8", extraHeaders);
 }
 
+function redirect(response, location) {
+  response.writeHead(302, { Location: location });
+  response.end();
+}
+
 function readBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -82,6 +89,10 @@ function readBody(request) {
   });
 }
 
+async function readJson(request) {
+  return JSON.parse(await readBody(request) || "{}");
+}
+
 function sessionCookie(session, secure) {
   const parts = [
     `sid=${session.id}`,
@@ -92,25 +103,6 @@ function sessionCookie(session, secure) {
   ];
   if (secure) parts.push("Secure");
   return parts.join("; ");
-}
-
-function publicView(project) {
-  return {
-    id: project.id,
-    name: project.name,
-    repoUrl: project.repoUrl,
-    techSummary: project.techSummary,
-    owner: {
-      code: ownerCode(project.userId, project.ownerCreatedAt),
-      name: displayName(project.userId, project.ownerCreatedAt, project.ownerNickname, project.ownerPublic),
-    },
-    contributions: (project.contributions || []).map((row) => ({
-      author: row.author,
-      score: row.score,
-      rank: row.rank,
-      agentCommits: row.detail ? row.detail.agentCommits : 0,
-    })),
-  };
 }
 
 function clearSessionCookie() {
@@ -138,13 +130,77 @@ function passwordFailure(response, result) {
 }
 
 function freshAccount(userId) {
-  return accountView(db.prepare("SELECT id, username, nickname, account_public, created_at FROM users WHERE id = ?").get(userId));
+  return accountView(db.prepare(`
+    SELECT id, username, nickname, account_public, created_at, github_login FROM users WHERE id = ?
+  `).get(userId));
+}
+
+function accountsByLogin() {
+  const map = new Map();
+  for (const row of db.prepare(`
+    SELECT github_login, nickname, account_public FROM users WHERE github_login IS NOT NULL
+  `).all()) {
+    map.set(row.github_login.toLowerCase(), row);
+  }
+  return map;
+}
+
+function rankedPeople() {
+  const accounts = accountsByLogin();
+  return rankingRows(db).map((row, index) => ({
+    rank: index + 1,
+    login: row.login,
+    code: personCode(row.login),
+    name: displayNameFor(row.login, accounts.get(row.login.toLowerCase())),
+    total: row.total,
+    projects: row.projects,
+  }));
+}
+
+async function judgeRepo(url) {
+  const inspected = await inspectRepo(url);
+  if (!inspected.ok) {
+    const previous = inspected.repoUrl ? markRepoFailure(db, inspected.repoUrl, inspected.failureReason) : null;
+    return { ok: false, failureReason: inspected.failureReason, previous };
+  }
+  const analysis = await analyzePeople(inspected.contributions);
+  const people = scorePeople(inspected.contributions, analysis);
+  const briefing = await writeBriefing({
+    ...inspected,
+    peopleWork: people
+      .filter((row) => row.detail.workSource === "code")
+      .map((row) => ({ person: row.author, work: row.work })),
+  });
+  const repo = saveRepo(db, {
+    repoUrl: inspected.repoUrl,
+    name: inspected.name,
+    people,
+    techSummary: briefing.techSummary,
+    difficulty: briefing.difficulty,
+    algorithms: briefing.algorithms,
+    features: briefing.features,
+  });
+  return {
+    ok: true,
+    repo,
+    briefingSource: briefing.briefingSource,
+    analyzedPeople: Object.keys(analysis).length,
+  };
+}
+
+function myProjectView(userId, login, repoId) {
+  return userProjects(db, userId, login).find((project) => project.repoId === repoId) || null;
 }
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
   const user = userFromRequest(db, request);
   const secure = Boolean(request.socket.encrypted);
+  const needUser = () => {
+    if (user) return true;
+    sendJson(response, 401, { ok: false, failureReason: "로그인이 필요합니다." });
+    return false;
+  };
 
   try {
     if (request.method === "GET" && url.pathname === "/api/me") {
@@ -152,19 +208,33 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/github/connect") {
+      if (!user) return redirect(response, "/?github=login");
+      if (!oauthReady()) return redirect(response, "/?github=config");
+      return redirect(response, authorizeUrl(user.id));
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/github/callback") {
+      if (url.searchParams.get("error")) return redirect(response, "/?github=denied");
+      if (!user || !takeState(url.searchParams.get("state"), user.id)) return redirect(response, "/?github=error");
+      const identity = await githubIdentity(url.searchParams.get("code"));
+      if (!identity) return redirect(response, "/?github=error");
+      const taken = db.prepare("SELECT id FROM users WHERE github_id = ? AND id != ?").get(identity.id, user.id);
+      if (taken) return redirect(response, "/?github=taken");
+      db.prepare("UPDATE users SET github_login = ?, github_id = ? WHERE id = ?").run(identity.login, identity.id, user.id);
+      return redirect(response, "/?github=linked");
+    }
+
     if (url.pathname.startsWith("/api/account/") && request.method === "POST") {
-      if (!user) {
-        sendJson(response, 401, { ok: false, failureReason: "로그인이 필요합니다." });
-        return;
-      }
-      const payload = JSON.parse(await readBody(request) || "{}");
+      if (!needUser()) return;
+      const payload = await readJson(request);
 
       if (url.pathname === "/api/account/nickname") {
         const nickname = String(payload.nickname || "").trim();
         if (!validNickname(nickname)) {
           sendJson(response, 400, {
             ok: false,
-            failureReason: "닉네임은 2~20자이고, 특수문자 < > \" ' & 와 '익명-'으로 시작하는 이름은 쓸 수 없습니다.",
+            failureReason: "닉네임은 2~20자이고, 특수문자 < > \" ' & # 는 쓸 수 없습니다.",
           });
           return;
         }
@@ -184,6 +254,12 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (url.pathname === "/api/account/github/disconnect") {
+        db.prepare("UPDATE users SET github_login = NULL, github_id = NULL WHERE id = ?").run(user.id);
+        sendJson(response, 200, { ok: true, user: freshAccount(user.id) });
+        return;
+      }
+
       if (url.pathname === "/api/account/password") {
         const next = String(payload.newPassword || "");
         if (next.length < 8) {
@@ -191,10 +267,7 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         const checked = await verifyPassword(user, payload.currentPassword);
-        if (checked !== "ok") {
-          passwordFailure(response, checked);
-          return;
-        }
+        if (checked !== "ok") return passwordFailure(response, checked);
         db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(next), user.id);
         db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?").run(user.id, sessionIdFromRequest(request));
         sendJson(response, 200, { ok: true });
@@ -203,10 +276,7 @@ const server = http.createServer(async (request, response) => {
 
       if (url.pathname === "/api/account/delete") {
         const checked = await verifyPassword(user, payload.password);
-        if (checked !== "ok") {
-          passwordFailure(response, checked);
-          return;
-        }
+        if (checked !== "ok") return passwordFailure(response, checked);
         deleteAccount(db, user.id);
         sendJson(response, 200, { ok: true }, { "Set-Cookie": clearSessionCookie() });
         return;
@@ -214,7 +284,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/api/register") {
-      const payload = JSON.parse(await readBody(request) || "{}");
+      const payload = await readJson(request);
       const username = normalizeUsername(payload.username);
       const password = String(payload.password || "");
       if (!validUsername(username)) {
@@ -225,8 +295,7 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 400, { ok: false, failureReason: "비밀번호는 8자 이상이어야 합니다." });
         return;
       }
-      const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
-      if (existing) {
+      if (db.prepare("SELECT id FROM users WHERE username = ?").get(username)) {
         sendJson(response, 409, { ok: false, failureReason: "이미 있는 아이디입니다." });
         return;
       }
@@ -246,14 +315,14 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/api/login") {
-      const payload = JSON.parse(await readBody(request) || "{}");
+      const payload = await readJson(request);
       const username = normalizeUsername(payload.username);
       const password = String(payload.password || "");
       if (locked(username)) {
         sendJson(response, 429, { ok: false, failureReason: "시도가 너무 많아 15분 동안 로그인할 수 없습니다." });
         return;
       }
-      const row = db.prepare("SELECT id, username, password_hash FROM users WHERE username = ?").get(username);
+      const row = db.prepare("SELECT id, password_hash FROM users WHERE username = ?").get(username);
       const matches = row ? await argon2.verify(row.password_hash, password) : false;
       if (!matches) {
         recordFailure(username);
@@ -275,112 +344,108 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/projects") {
-      if (!user) {
-        sendJson(response, 401, { ok: false, failureReason: "로그인이 필요합니다." });
+    if (request.method === "POST" && url.pathname === "/api/judge") {
+      const payload = await readJson(request);
+      const judged = await judgeRepo(payload.url);
+      if (!judged.ok) {
+        sendJson(response, 200, { ok: false, status: "실패", failureReason: judged.failureReason });
         return;
       }
-      sendJson(response, 200, { projects: listForUser(db, user.id) });
+      sendJson(response, 200, {
+        ...judged.repo,
+        ok: true,
+        briefingSource: judged.briefingSource,
+        analyzedPeople: judged.analyzedPeople,
+      });
       return;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/latest") {
-      sendJson(response, 200, { project: latest(db, user ? user.id : null) });
+    if (request.method === "GET" && url.pathname === "/api/ranking") {
+      const query = String(url.searchParams.get("q") || "").trim().toLowerCase();
+      const people = rankedPeople()
+        .filter((person) => !query || person.name.toLowerCase().includes(query))
+        .slice(0, 100)
+        .map(({ login, ...person }) => person);
+      sendJson(response, 200, { people });
       return;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/public") {
-      sendJson(response, 200, { projects: listShared(db).map(publicView) });
-      return;
-    }
-
-    const ownerMatch = url.pathname.match(/^\/api\/public\/owners\/([0-9a-f]{16})$/);
-    if (request.method === "GET" && ownerMatch) {
-      const owner = sharedOwners(db).find((row) => ownerCode(row.id, row.created_at) === ownerMatch[1]);
-      const projects = owner ? listSharedByOwner(db, owner.id).map(publicView) : [];
-      if (!projects.length) {
+    const personMatch = url.pathname.match(/^\/api\/ranking\/([0-9a-f]{16})$/);
+    if (request.method === "GET" && personMatch) {
+      const person = rankedPeople().find((row) => row.code === personMatch[1]);
+      if (!person) {
         sendJson(response, 404, { ok: false, failureReason: "정보 없음" });
         return;
       }
-      sendJson(response, 200, { owner: projects[0].owner, projects });
+      const { login, ...shown } = person;
+      sendJson(response, 200, { person: shown, projects: personProjects(db, login) });
       return;
     }
 
-    const shareMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/share$/);
-    if (request.method === "POST" && shareMatch) {
-      if (!user) {
-        sendJson(response, 401, { ok: false, failureReason: "로그인이 필요합니다." });
+    if (url.pathname === "/api/my/projects" || url.pathname.startsWith("/api/my/projects/")) {
+      if (!needUser()) return;
+      if (!user.github_login) {
+        sendJson(response, 409, { ok: false, failureReason: "먼저 관리 > 설정에서 GitHub를 연결해 주세요." });
         return;
       }
-      const payload = JSON.parse(await readBody(request) || "{}");
-      const project = setShared(db, Number(shareMatch[1]), user.id, Boolean(payload.shared));
-      if (!project) {
-        sendJson(response, 404, { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
-        return;
-      }
-      sendJson(response, 200, { ok: true, project });
-      return;
-    }
 
-    const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
-    if (request.method === "DELETE" && projectMatch) {
-      if (!user) {
-        sendJson(response, 401, { ok: false, failureReason: "로그인이 필요합니다." });
+      if (request.method === "GET" && url.pathname === "/api/my/projects") {
+        sendJson(response, 200, { githubLogin: user.github_login, projects: userProjects(db, user.id, user.github_login) });
         return;
       }
-      const removed = removeProject(db, Number(projectMatch[1]), user.id);
-      if (!removed) {
-        sendJson(response, 404, { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
-        return;
-      }
-      sendJson(response, 200, { ok: true });
-      return;
-    }
 
-    if (request.method === "POST" && url.pathname === "/api/judge") {
-      const payload = JSON.parse(await readBody(request) || "{}");
-      const inspected = await inspectRepo(payload.url);
-      if (!inspected.ok) {
-        const saved = inspected.repoUrl
-          ? saveJudgment(db, { userId: user ? user.id : null, result: inspected })
-          : null;
-        sendJson(response, 200, saved ? { ...saved, ok: saved.status !== "실패", failureReason: saved.failureReason } : inspected);
+      if (request.method === "POST" && url.pathname === "/api/my/projects") {
+        const payload = await readJson(request);
+        const judged = await judgeRepo(payload.url);
+        if (!judged.ok) {
+          sendJson(response, 200, { ok: false, failureReason: judged.failureReason });
+          return;
+        }
+        if (!myRow(db, judged.repo.id, user.github_login)) {
+          sendJson(response, 200, {
+            ok: false,
+            failureReason: `${judged.repo.name}의 기여자 중에 ${user.github_login}이(가) 없어서 추가하지 않았습니다.`,
+          });
+          return;
+        }
+        addUserProject(db, user.id, judged.repo.id);
+        sendJson(response, 200, { ok: true, project: myProjectView(user.id, user.github_login, judged.repo.id) });
         return;
       }
-      const analysis = await analyzePeople(inspected.contributions.filter((person) => person.samples.length));
-      const contributions = scorePeople(inspected.contributions, analysis);
-      const briefing = await writeBriefing({
-        ...inspected,
-        peopleWork: contributions
-          .filter((row) => row.detail.workSource === "code")
-          .map((row) => ({ person: row.author, work: row.work })),
-      });
-      const saved = saveJudgment(db, {
-        userId: user ? user.id : null,
-        result: {
-          ok: true,
-          repoUrl: inspected.repoUrl,
-          name: inspected.name,
-          contributions,
-          techSummary: briefing.techSummary,
-          difficulty: briefing.difficulty,
-          algorithms: briefing.algorithms,
-          features: briefing.features,
-        },
-      });
-      sendJson(response, 200, {
-        ...saved,
-        ok: true,
-        briefingSource: briefing.briefingSource,
-        analyzedPeople: Object.keys(analysis).length,
-      });
-      return;
+
+      const rejudgeMatch = url.pathname.match(/^\/api\/my\/projects\/(\d+)\/rejudge$/);
+      if (request.method === "POST" && rejudgeMatch) {
+        const repoId = Number(rejudgeMatch[1]);
+        if (!ownsProject(db, user.id, repoId)) {
+          sendJson(response, 404, { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
+          return;
+        }
+        const repo = db.prepare("SELECT repo_url FROM repos WHERE id = ?").get(repoId);
+        const judged = await judgeRepo(repo.repo_url);
+        sendJson(response, 200, {
+          ok: judged.ok,
+          failureReason: judged.ok ? null : judged.failureReason,
+          project: myProjectView(user.id, user.github_login, repoId),
+        });
+        return;
+      }
+
+      const removeMatch = url.pathname.match(/^\/api\/my\/projects\/(\d+)$/);
+      if (request.method === "DELETE" && removeMatch) {
+        const removed = removeUserProject(db, user.id, Number(removeMatch[1]));
+        sendJson(response, removed ? 200 : 404, removed ? { ok: true } : { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
+        return;
+      }
     }
   } catch (error) {
     sendJson(response, 400, { ok: false, failureReason: error.message || "요청을 처리하지 못했습니다." });
     return;
   }
 
+  if (url.pathname.startsWith("/api/")) {
+    sendJson(response, 404, { ok: false, failureReason: "없는 주소입니다." });
+    return;
+  }
   if (request.method !== "GET") {
     send(response, 405, "Method not allowed", "text/plain; charset=utf-8");
     return;

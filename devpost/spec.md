@@ -34,15 +34,16 @@ PRD ref: `prd.md > The Core Journey`.
 - **better-sqlite3-multiple-ciphers** — SQLite를 SQLCipher 호환 모드로 연다. 이 라이브러리의 기본 암호는 sqleet이므로, 빌드는 `cipher=sqlcipher`, `legacy=4`로 연다. 그 모드의 디스크 암호화는 AES-256이다. 빌드 첫 단계에서 [SQLite3MultipleCiphers](https://github.com/utelle/SQLite3MultipleCiphers) 문서와 맞는지 확인하고, 기본값 sqleet로 저장하지 않는다. https://github.com/m4heshd/better-sqlite3-multiple-ciphers
 - **argon2** — 비밀번호 해시. Argon2id, 메모리 19MiB, 반복 2, 병렬 1. https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet
 - **GitHub REST API** — 순위, 점수, 한 일. https://docs.github.com/en/rest
-- **Groq OpenAI 호환 Chat Completions** — 기술 요약, 난이도 문장, 알고리즘 문장. 무료 모델의 정확한 이름은 자주 바뀌므로 빌드 시작 때 Groq 콘솔의 무료 목록에서 고르고, 고른 이름을 이 문서에 적는다. https://console.groq.com/docs/openai
+- **Groq OpenAI 호환 Chat Completions** — 사람별 기능 분석, 기술 요약, 만든 기능, 난이도 문장, 알고리즘 문장. 사람 분석은 `openai/gpt-oss-120b`, 프로젝트 요약은 한도가 모자라면 `openai/gpt-oss-20b`로 보낸다. https://console.groq.com/docs/openai
+- **GitHub OAuth App** — 계정에 본인의 GitHub 아이디를 연결한다. https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
 
 ## Where It Runs and How Someone Tries It
 
 VM의 Node 서버가 페이지를 제공한다. 데모 영상과 공개 GitHub 저장소가 둘 다 필요하고, 홈페이지 주소는 그 영상을 대신하지 않는다. 다른 사람은 그 HTTPS 주소로 가입하고 공개 저장소를 판단할 수 있다.
 
-필요한 것: Node.js LTS, VM에만 두는 환경변수 `SQLCIPHER_KEY`, `GITHUB_TOKEN`, `GROQ_API_KEY`, `SESSION_SECRET`. 값의 예시는 `.env.example`에만 두고, 실제 값은 커밋하지 않는다.
+필요한 것: Node.js LTS, VM에만 두는 환경변수 `SQLCIPHER_KEY`, `SESSION_SECRET`, `GITHUB_TOKEN`, `GROQ_API_KEY`, `GROQ_MODEL`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `PUBLIC_URL`. 선택으로 `GROQ_FALLBACK_MODELS`. 값의 예시는 `.env.example`에만 두고, 실제 값은 커밋하지 않는다. OAuth App의 callback URL은 로컬이면 `http://localhost:3000/api/github/callback`, 배포하면 `https://(홈페이지 주소)/api/github/callback`이다. OAuth App 하나에 callback URL이 하나라서, 로컬용과 배포용 앱을 따로 만든다.
 
-시작은 프로젝트 루트에서 `node server.js`다. 브라우저로 그 VM의 공개 HTTPS 주소를 연다. 영상에 담을 장면은 가입, 공개 저장소 주소 하나 판단, 기여도와 문서, 설정에서 공유를 켠 뒤 로그아웃 상태의 공개 프로젝트다.
+시작은 프로젝트 루트에서 `node server.js`다. 브라우저로 그 VM의 공개 HTTPS 주소를 연다. 영상에 담을 장면은 메인에서 공개 저장소 하나 판단(기능별 점수, 기술 상세), 가입과 GitHub 연결, 프로젝트 관리에 내 저장소 추가, 계정 공개를 켠 뒤 공개 프로젝트의 기여 순위 검색과 사람 화면이다.
 
 배포 대상은 학습자의 개인 공개 홈페이지 VM이다. 빌드 때 그 주소가 HTTPS인지 확인한다. HTTP이면 `Secure` 쿠키를 쓸 수 없으므로, HTTPS를 켠 뒤에 공개한다. 구체적인 프로세스 관리자 이름은 아직 모른다.
 
@@ -64,12 +65,18 @@ PRD ref: `prd.md > 프로젝트 목록`.
 
 ### 프로젝트 목록
 
-세션의 사용자 프로젝트만 진행중, 완료, 실패로 보여 준다. 비어 있으면 추가하기만 보여 준다.
-PRD ref: `prd.md > 프로젝트 목록`.
+`GET /api/my/projects`. GitHub가 연결된 계정만 쓴다(없으면 409). `user_projects`로 등록한 저장소를 고르고, 저장소마다 `repo_people`에서 내 GitHub 아이디의 행만 돌려준다. 다른 팀원의 행과 기술 상세는 보내지 않는다. `DELETE /api/my/projects/{repoId}`는 내 목록에서만 뺀다.
+PRD ref: `prd.md > 프로젝트 목록`, `prd.md > 설정`.
 
 ### 추가하기와 판단
 
-공개 저장소 주소만 받는다. `https://github.com/소유자/저장소` 형태가 아니면 실패로 저장한다. 맞으면 진행중으로 저장한 뒤 GitHub를 읽고, 이어서 Groq에 문장을 맡긴다. 서버가 끝나기 전에 브라우저를 닫아도 서버는 결과를 파일에 쓴다. 웹훅 입력은 없다.
+`server.js`의 `judgeRepo(url)` 하나가 판단을 맡는다. GitHub 읽기 → 사람별 분석 → 점수 → 프로젝트 요약 → `repos`/`repo_people` 저장 순서다. 같은 저장소를 다시 판단하면 그 저장소 행을 갱신하고 사람 행을 바꿔 쓴다. 실패하면 저장하지 않고, 이미 있던 저장소면 `failure_reason`만 남긴다.
+
+- `POST /api/judge` — 메인. 로그인 없이 쓰고, 저장소 전체 결과를 돌려준다.
+- `POST /api/my/projects` — 판단한 뒤 내 GitHub 아이디의 행이 있을 때만 `user_projects`에 넣는다.
+- `POST /api/my/projects/{repoId}/rejudge` — 내 목록에 있는 저장소만 다시 판단한다.
+
+웹훅 입력은 없다.
 PRD ref: `prd.md > 추가하기`, `prd.md > 판단 결과`.
 
 ### 기여도
@@ -77,34 +84,39 @@ PRD ref: `prd.md > 추가하기`, `prd.md > 판단 결과`.
 `src/github.js`가 사람별 숫자를 모으고, `src/groq.js`의 `analyzePeople`가 코드를 읽고, `src/score.js`가 점수를 낸다.
 
 - **AI 에이전트 합치기** — 작성자가 `cursoragent`, `copilot*`, `claude*`, `codex*`, `devin*`, `[bot]` 등이면 에이전트로 본다. 그 에이전트의 커밋(최대 100개)에서 `Co-authored-by:` 를 읽어 GitHub 아이디로 바꾼 뒤 그 사람의 커밋으로 센다. 사람마다 `agentCommits`, `agentLogins`를 따로 저장해서, 나중에 "AI 에이전트 커밋 포함" 설정을 붙일 때 다시 판단하지 않고 점수를 다시 낼 수 있다. 공동 작성자를 못 찾은 에이전트 커밋은 에이전트 이름으로 남는다.
-- **작업량** = 커밋 수(합친 에이전트 커밋 포함) + 합쳐진 PR 수.
-- **코드 표본** — 작업량 상위 6명, 사람마다 최근 커밋 5개, 커밋마다 파일 6개, 파일마다 바뀐 코드 앞 400자. 전체가 14,000자를 넘으면 코드 길이를 반씩 줄인다. 근거의 파일 수와 줄 수는 이 표본 기준이다.
-- **난이도** = 모델이 표본을 읽고 매긴 1~5 정수와 이유 한 문장. 1=문서·오타·설정, 2=단순 화면·데이터 수정, 3=기능 하나, 4=여러 모듈에 걸친 기능·알고리즘, 5=복잡한 알고리즘·구조·보안. `temperature 0`, gpt-oss는 `reasoning_effort: low`. 분당 한도(429)에 걸리면 `retry-after`만큼 한 번 기다린다.
-- **점수** = 작업량 × 난이도. 분석되지 않은 사람은 난이도 1로 계산하고 "난이도 분석 안 됨"으로 보인다.
-- **한 일** = 모델이 코드를 읽고 쓴 2~4개 항목. 없으면 커밋 메시지.
-- 한계: 표본은 최근 커밋이라 오래전에 큰 일을 한 사람은 낮게 나올 수 있다. 같은 코드도 다시 판단하면 난이도가 조금 다를 수 있다.
+- **분석 대상** — 커밋 수 상위 6명. 사람마다 커밋 메시지 최대 40개를 모으고(합친 에이전트 커밋 포함, 머지 커밋 제외), 모델에는 최대 25개를 50자로 보낸다. 앞 커밋 최대 3개는 파일 4개, 파일마다 바뀐 코드 앞 200자까지 함께 보낸다. 사람 한 명이 2,400자를 넘으면 코드 길이, 코드 커밋 수, 메시지 수 순서로 줄인다.
+- **모델 응답** — 사람마다 `features: [{f, name, tech, difficulty}]`와 `assign`(커밋 순서대로 기능 번호 f). 커밋마다 기능 번호를 하나씩 적게 해서 빠뜨리는 커밋을 줄였다. 난이도 기준은 1=문서·오타·설정, 2=단순 화면·데이터 수정, 3=기능 하나, 4=여러 모듈에 걸친 기능·알고리즘, 5=복잡한 알고리즘·구조·보안. `temperature 0`, gpt-oss는 `reasoning_effort: low`.
+- **점수** (`src/score.js`) — 기능 점수 = 그 기능에 배정된 커밋 수 × 난이도. 사람 점수 = 기능 점수의 합. 배정되지 않은 커밋은 "기능으로 묶이지 않은 커밋"(난이도 1), 모델에 보내지 않은 나머지 커밋은 "모델이 읽지 않은 커밋"(그 사람의 평균 난이도)으로 더한다. 분석 대상 밖의 사람은 커밋 수 × 1이고 "난이도 분석 안 됨"으로 보인다. PR은 점수에 넣지 않는다.
+- **한도 관리** — Groq 무료 구간은 모델마다 분당 8,000 토큰이다. 사람 여러 명을 7,500자 단위로 묶어 차례로 보내고, 응답 헤더 `x-ratelimit-remaining-tokens`와 429 응답의 "Used N"으로 남은 양을 기억해, 모자라면 다시 찰 때까지만 기다린다. 사람 분석은 한 판단 안에서 `GROQ_MODEL` 하나만 쓴다. 사람마다 다른 모델이 난이도를 매기면 공정하지 않기 때문이다. 프로젝트 요약만 한도가 모자랄 때 `GROQ_FALLBACK_MODELS`(기본 `openai/gpt-oss-20b`)로 보낸다.
+- 한계: 커밋이 많은 사람은 대부분이 평균 난이도로 계산된다. 같은 코드도 다시 판단하면 기능 묶음과 난이도가 조금 다를 수 있다.
 
 PRD ref: `prd.md > 기여도`.
 
 ### 문서
 
-사람별 분석이 끝난 뒤, Groq에 README 일부, 사용 언어, 상위 파일 이름, 최근 커밋 메시지 40개, 사람별 한 일을 보내고 기술 요약, 만든 기능(3~8개), 난이도 문장, 알고리즘 문장을 받는다. 만든 기능은 `projects.features`에 저장한다. 실패하면 README 첫 문단과 언어 목록을 기술 요약으로 저장하고, 난이도와 알고리즘에는 모델 응답이 없었다는 문장을 저장한다.
+사람별 분석이 끝난 뒤, Groq에 README 일부, 사용 언어, 상위 파일 이름, 최근 커밋 메시지 40개, 사람별 한 일을 보내고 기술 요약, 만든 기능(3~8개), 난이도 문장, 알고리즘 문장을 받는다. 만든 기능은 `repos.features`에 저장한다. 기술 상세는 메인의 `POST /api/judge` 응답에만 담는다. 실패하면 README 첫 문단과 언어 목록을 기술 요약으로 저장하고, 난이도와 알고리즘에는 모델 응답이 없었다는 문장을 저장한다.
 PRD ref: `prd.md > 문서`.
 
-### 설정
+### 공개 프로젝트 (기여 순위)
 
-소유자만 삭제, 연동 확인, 공유를 본다. 연동 확인은 마지막 GitHub 호출이 성공했는지다. 공유를 켜야 공개 목록에 올라간다. 삭제하면 그 프로젝트와 기여 행이 파일에서 빠진다.
-PRD ref: `prd.md > 설정`.
-
-### 공개 프로젝트
-
-로그인 없이, 공유가 켜진 프로젝트의 이름, 기술 요약, 순위와 점수, 등록한 사람을 보여 준다. 없으면 "정보 없음". 등록한 사람은 `owner.code`(계정 번호와 가입 시각을 `SESSION_SECRET`로 HMAC한 16자리)와 `owner.name`으로 보낸다. 계정 공개가 꺼져 있으면 `owner.name`은 `익명-` + 그 코드 앞 6자리다. 닉네임을 누르면 `GET /api/public/owners/{code}`가 그 사람의 공유 프로젝트만 돌려준다. 지워진 계정의 번호를 새 계정이 다시 받아도 가입 시각이 달라 코드가 겹치지 않는다.
+`GET /api/ranking?q=`와 `GET /api/ranking/{code}`. 로그인 없이 쓴다. `repo_people`을 GitHub 아이디(대소문자 무시)로 묶어 점수를 더하고, AI 에이전트 행은 뺀다. 사람마다 `code` = `SESSION_SECRET`로 `gh:` + 소문자 GitHub 아이디를 HMAC한 16자리. 보이는 이름은 그 아이디에 연결된 계정이 있고 `account_public`이 1이면 닉네임, 아니면 코드로 고른 "형용사+동물#4자리" 랜덤 닉네임이다. 검색은 보이는 이름에만 걸고, 응답에는 GitHub 아이디를 넣지 않는다. 전체 순위를 먼저 매긴 뒤 검색으로 거르므로 검색 결과의 순위도 전체 순위다. 최대 100명.
 PRD ref: `prd.md > 공개 프로젝트`.
 
 ### 계정 설정
 
-`src/account.js`와 `POST /api/account/nickname`, `/visibility`, `/password`, `/delete`. 비밀번호 변경과 계정 삭제는 지금 비밀번호를 Argon2id로 확인하고, 로그인과 같은 5회 실패 후 15분 거절을 쓴다. 비밀번호를 바꾸면 지금 세션을 뺀 나머지 세션을 지운다. 계정 삭제는 한 트랜잭션에서 기여 행, 프로젝트, 세션, 계정을 지운다. 왼쪽의 관리 메뉴는 `public/index.html`의 `#nav-manage`이고 로그인 상태에서만 보인다.
+`src/account.js`와 `POST /api/account/nickname`, `/visibility`, `/github/disconnect`, `/password`, `/delete`. 비밀번호 변경과 계정 삭제는 지금 비밀번호를 Argon2id로 확인하고, 로그인과 같은 5회 실패 후 15분 거절을 쓴다. 비밀번호를 바꾸면 지금 세션을 뺀 나머지 세션을 지운다. 계정 삭제는 한 트랜잭션에서 `user_projects`, 이전 방식의 프로젝트, 세션, 계정을 지운다. `repos`/`repo_people`의 GitHub 기록은 남는다. 왼쪽의 관리 메뉴는 `public/index.html`의 `#nav-manage`이고 로그인 상태에서만 보인다.
 PRD ref: `prd.md > 관리`, `prd.md > 계정 설정`.
+
+### GitHub 연결
+
+`src/oauth.js`. GitHub OAuth App을 쓰고, 권한(scope)은 요청하지 않는다. 공개 프로필의 아이디만 받는다.
+
+1. `GET /api/github/connect` — 로그인한 계정만 쓴다. 무작위 `state`를 만들어 계정 번호와 10분 만료로 서버 메모리에 두고, `https://github.com/login/oauth/authorize?client_id&redirect_uri&state&allow_signup=false`로 보낸다.
+2. `GET /api/github/callback` — `state`가 있고, 만료 전이고, 같은 계정의 세션일 때만 진행한다. `POST https://github.com/login/oauth/access_token`으로 코드를 토큰으로 바꾸고, `GET https://api.github.com/user`로 `login`과 `id`를 받는다. 토큰은 저장하지 않고 버린다. 그 `id`가 다른 계정에 이미 있으면 `/?github=taken`, 아니면 `users.github_login`/`github_id`에 쓰고 `/?github=linked`로 돌아간다.
+3. 화면은 `?github=` 값을 읽어 설정 화면에 결과를 보여 주고 주소에서 지운다.
+
+`redirect_uri`는 `PUBLIC_URL` + `/api/github/callback`이다. OAuth App에 적은 Authorization callback URL과 같아야 한다. 세션 쿠키가 `SameSite=Lax`라 GitHub에서 돌아오는 첫 GET에도 쿠키가 붙는다. `GITHUB_CLIENT_ID`나 `GITHUB_CLIENT_SECRET`가 없으면 설정 화면에 연결할 수 없다는 안내만 보인다.
+PRD ref: `prd.md > 계정 설정`.
 
 ### 데이터베이스
 
@@ -115,12 +127,14 @@ PRD ref: `prd.md > States and Boundaries`.
 
 SQLite 데이터베이스 파일은 SQLCipher를 적용하여 AES-256으로 디스크 암호화 저장합니다. 경로는 `data/app.db`이고 Git에는 넣지 않는다. 사용자가 나갔다가 같은 계정으로 다시 들어오면 이 파일의 그 사용자 행을 다시 읽는다.
 
-- **users** — id, username, password_hash, created_at, nickname, account_public. 비밀번호 원문은 없다. nickname은 가입 때 아이디와 같고, account_public은 처음에 0이다. 기존 파일에는 서버가 켜질 때 두 칸을 추가한다.
+- **users** — id, username, password_hash, created_at, nickname, account_public, github_login, github_id. 비밀번호 원문과 GitHub 토큰은 없다. nickname은 가입 때 아이디와 같고, account_public은 처음에 0이다. github_id는 중복될 수 없다. 기존 파일에는 서버가 켜질 때 칸을 추가한다.
 - **sessions** — id, user_id, expires_at. 쿠키에는 id만 있다.
-- **projects** — id, user_id, repo_url, status(`진행중` `완료` `실패`), failure_reason, shared, connection_ok, tech_summary, difficulty, algorithms, updated_at.
-- **contributions** — id, project_id, author, score, rank, work, detail. detail은 JSON으로 workload, difficulty, difficultyReason, workSource, commits, agentCommits, agentLogins, prsOpened, prsMerged, additions, deletions, filesChanged, sampledCommits, isAgent를 담는다.
+- **repos** — id, repo_url(대소문자 무시, 하나만), name, status, failure_reason, tech_summary, difficulty, algorithms, features, updated_at. 저장소마다 가장 최근 판단 하나.
+- **repo_people** — id, repo_id, github_login(대소문자 무시), score, rank, work, detail. detail은 JSON으로 isAgent, workSource, features(name, tech, difficulty, commits, points, kind), analyzedCommits, commits, agentCommits, agentLogins, prsOpened, prsMerged, additions, deletions, filesChanged, sampledCommits를 담는다. 기여 순위는 이 표를 더한다.
+- **user_projects** — user_id, repo_id, created_at. 프로젝트 관리 목록.
+- **projects**, **contributions** — 이전 방식의 표. 더는 쓰지 않고, 계정 삭제 때만 지운다.
 
-갱신이 끝나기 전에 다시 열면 이전 `projects`와 `contributions`가 그대로다. 완료는 GitHub 점수와 문서 문장이 모두 저장된 때다. Groq만 실패하면 대체 문장을 저장하고 완료로 둔다.
+재판단이 끝나기 전에 다시 열면 이전 `repos`와 `repo_people`이 그대로다. Groq만 실패하면 대체 문장을 저장하고 완료로 둔다.
 
 ## File Structure
 
@@ -138,9 +152,12 @@ project/
 ├── src/
 │   ├── db.js              # SQLCipher로 열기, 테이블
 │   ├── auth.js            # Argon2id, 세션, 시도 제한
-│   ├── github.js          # 저장소, 기여자, 커밋, PR, 점수
-│   ├── groq.js            # 문장 3개, 실패 시 대체 문장
-│   └── projects.js        # 목록, 추가, 공유, 삭제
+│   ├── account.js         # 닉네임, 랜덤 닉네임, 계정 삭제
+│   ├── oauth.js           # GitHub 연결
+│   ├── github.js          # 저장소, 기여자, 커밋, PR, AI 에이전트 합치기
+│   ├── groq.js            # 사람별 기능 분석, 프로젝트 요약, 한도 관리
+│   ├── score.js           # 기능별 커밋 수 × 난이도의 합
+│   └── repos.js           # 판단 저장, 기여 순위, 내 프로젝트
 ├── devpost/               # 학습 문서
 └── README.md              # 시작 방법
 ```
