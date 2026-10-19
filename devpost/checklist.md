@@ -51,7 +51,7 @@ Build mode: fast
 
 ## Hands-on Checkpoints
 
-- [x] Early usable behavior explored — after slice 1, when a real repo ranking and briefing are on screen
+- [ ] Early usable behavior explored — after slice 1, when a real repo ranking and briefing are on screen
 - [ ] Final kick-the-tires exploration and feedback completed
 
 ## Final Review
@@ -75,3 +75,5 @@ Activity mode: not started
 - 메인 오른쪽에 아무것도 안 보이던 문제 — `app.js`의 `const top`이 브라우저의 `window.top`과 충돌해 스크립트가 죽었다. `topBar`로 바꿨다.
 - 메인 화면 — 학습자 피드백으로 시스템 설명과 판단하기를 같은 화면에 두었다. 로그인·공개 프로젝트는 왼쪽 메뉴로 이어진다.
 - 로그인·SQLCipher·공개 공유 — 피드백을 반영해 2–4단계를 이어서 붙였다. 판단 결과는 SQLCipher 파일에 남고, 설정에서 공유한 항목만 공개 프로젝트에 나온다.
+- 초기 체크포인트를 다시 미완료로 돌렸다 — 학습자가 화면을 직접 써 보기 전에 체크되어 있었다. 학습자가 써 본 뒤에 체크한다.
+- 서버가 꺼져 있거나 `index.html`을 파일로 열면 화면이 비고 클릭이 안 됐다 — `/app.js` 절대 경로가 파일 열기에서 깨졌다. 상대 경로로 바꾸고, 서버에 닿지 않으면 `node server.js` 실행 안내를 보여 준다.

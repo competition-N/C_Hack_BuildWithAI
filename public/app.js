@@ -13,6 +13,14 @@ let result = null;
 let projects = [];
 let publicProjects = [];
 let openedId = null;
+let serverDown = false;
+
+const serverNotice = `
+  <section class="panel fail">
+    <h2>서버에 연결되지 않았습니다</h2>
+    <p>이 페이지는 파일로 직접 열면 동작하지 않습니다. 프로젝트 폴더에서 <code>node server.js</code>를 실행한 뒤 <code>http://localhost:3000</code>을 열어 주세요.</p>
+  </section>
+`;
 
 const explanation = `
   <p class="lede">대학생 팀 프로젝트에서 버스와 무임승차를 가려 내는 시스템입니다. 서로 말한 기여가 아니라, 공개 GitHub 저장소에 남은 커밋과 PR로 사람마다 순위, 세부 점수, 한 일을 보여 줍니다. 그 옆에는 기술 요약, 난이도, 알고리즘을 같이 둡니다.</p>
@@ -151,6 +159,11 @@ function currentProject() {
 }
 
 function render() {
+  if (serverDown) {
+    topBar.hidden = true;
+    screen.innerHTML = serverNotice + explanation;
+    return;
+  }
   const current = currentProject();
   const showChrome = Boolean(current && current.status !== "실패" && current.ok !== false && current.name);
   topBar.hidden = !showChrome;
@@ -221,6 +234,8 @@ function bindJudge(formId) {
       tabButtons.forEach((item) => {
         item.setAttribute("aria-selected", item.dataset.tab === "all" ? "true" : "false");
       });
+    } catch {
+      serverDown = true;
     } finally {
       render();
     }
@@ -300,31 +315,45 @@ function bindSettings() {
 }
 
 async function loadProjects() {
-  const response = await fetch("/api/projects");
-  if (!response.ok) {
+  try {
+    const response = await fetch("/api/projects");
+    if (!response.ok) {
+      projects = [];
+      return;
+    }
+    const payload = await response.json();
+    projects = payload.projects || [];
+  } catch {
     projects = [];
-    return;
+    serverDown = true;
   }
-  const payload = await response.json();
-  projects = payload.projects || [];
 }
 
 async function loadPublic() {
-  const response = await fetch("/api/public");
-  if (!response.ok) {
+  try {
+    const response = await fetch("/api/public");
+    if (!response.ok) {
+      publicProjects = [];
+      return;
+    }
+    const payload = await response.json();
+    publicProjects = payload.projects || [];
+  } catch {
     publicProjects = [];
-    return;
+    serverDown = true;
   }
-  const payload = await response.json();
-  publicProjects = payload.projects || [];
 }
 
 async function start() {
   try {
     const meResponse = await fetch("/api/me");
-    if (meResponse.ok) me = (await meResponse.json()).user;
+    if (!meResponse.ok) throw new Error("no api");
+    me = (await meResponse.json()).user;
   } catch {
     me = null;
+    serverDown = true;
+    render();
+    return;
   }
   try {
     const latestResponse = await fetch("/api/latest");
