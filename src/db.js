@@ -55,6 +55,10 @@ function openDatabase() {
     db.exec("ALTER TABLE users ADD COLUMN account_public INTEGER NOT NULL DEFAULT 0");
   }
   db.exec("UPDATE users SET nickname = username WHERE nickname IS NULL");
+  const contributionColumns = db.prepare("PRAGMA table_info(contributions)").all().map((column) => column.name);
+  if (!contributionColumns.includes("detail")) db.exec("ALTER TABLE contributions ADD COLUMN detail TEXT");
+  const projectColumns = db.prepare("PRAGMA table_info(projects)").all().map((column) => column.name);
+  if (!projectColumns.includes("features")) db.exec("ALTER TABLE projects ADD COLUMN features TEXT");
   return db;
 }
 

@@ -66,6 +66,18 @@ body {
 }
 .danger { color: #8d3b32; border-color: #d9b7b0 !important; }
 .owner-projects { list-style: none; padding: 0; margin: 0; }
+.small { font-size: 14px; line-height: 1.45; }
+th { white-space: nowrap; }
+.badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--accent);
+  background: #f8efd8;
+  border: 1px solid #e6cfa3;
+}
 .ok { color: #1f6b4a; }
 .stage {
   grid-column: 2;

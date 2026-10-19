@@ -89,18 +89,54 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function personCell(row) {
+  const detail = row.detail || {};
+  const agentCommits = detail.agentCommits || row.agentCommits || 0;
+  const badges = [
+    agentCommits ? `<span class="badge">AI 에이전트 ${agentCommits}건 포함</span>` : "",
+    detail.isAgent ? `<span class="badge">AI 에이전트 · 공동 작성자 없음</span>` : "",
+  ].join("");
+  return `${escapeHtml(row.author)}${badges ? `<div>${badges}</div>` : ""}`;
+}
+
+function scoreCell(row) {
+  const detail = row.detail;
+  if (!detail) return `${row.score}`;
+  const formula = detail.difficulty
+    ? `작업량 ${detail.workload} × 난이도 ${detail.difficulty}`
+    : `작업량 ${detail.workload} · 난이도 분석 안 됨`;
+  return `<strong>${row.score}</strong><div class="muted small">${formula}</div>`;
+}
+
+function evidenceCell(row) {
+  const detail = row.detail;
+  if (!detail) return "";
+  const lines = [
+    `커밋 ${detail.commits}${detail.agentCommits ? ` (AI ${detail.agentCommits})` : ""} · PR ${detail.prsMerged} 합침 / ${detail.prsOpened} 열음`,
+    detail.sampledCommits
+      ? `최근 커밋 ${detail.sampledCommits}개: 파일 ${detail.filesChanged}개, +${detail.additions} / −${detail.deletions}줄`
+      : "코드 변경 표본 없음",
+  ];
+  if (detail.difficultyReason) lines.push(`난이도 이유: ${escapeHtml(detail.difficultyReason)}`);
+  return `<div class="small">${lines.join("<br>")}</div>`;
+}
+
 function rankingTable(rows, includeWork) {
   if (!rows || !rows.length) return "<p>기여자 기록이 없습니다.</p>";
   const body = rows.map((row) => `
     <tr>
       <td>${row.rank}</td>
-      <td>${escapeHtml(row.author)}</td>
-      <td>${row.score}</td>
-      ${includeWork ? `<td><ul class="work">${(row.work || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></td>` : ""}
+      <td>${personCell(row)}</td>
+      <td>${scoreCell(row)}</td>
+      ${includeWork ? `<td>${evidenceCell(row)}</td>` : ""}
+      ${includeWork ? `<td>
+        <ul class="work">${(row.work || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        ${row.detail && row.detail.workSource === "code" ? "<div class='muted small'>코드 변경을 읽고 요약</div>" : "<div class='muted small'>커밋 메시지</div>"}
+      </td>` : ""}
     </tr>
   `).join("");
   return `<table>
-    <thead><tr><th>순위</th><th>사람</th><th>세부 점수</th>${includeWork ? "<th>한 일</th>" : ""}</tr></thead>
+    <thead><tr><th>순위</th><th>사람</th><th>점수</th>${includeWork ? "<th>근거</th><th>한 일</th>" : ""}</tr></thead>
     <tbody>${body}</tbody>
   </table>`;
 }
@@ -108,6 +144,7 @@ function rankingTable(rows, includeWork) {
 function docs(data) {
   return `
     <section class="panel"><h2>기술 요약</h2><p>${escapeHtml(data.techSummary)}</p></section>
+    <section class="panel"><h2>만든 기능</h2><p>${escapeHtml(data.features || "아직 정리되지 않았습니다. 다시 판단하면 나옵니다.")}</p></section>
     <section class="panel"><h2>난이도</h2><p>${escapeHtml(data.difficulty)}</p></section>
     <section class="panel"><h2>알고리즘</h2><p>${escapeHtml(data.algorithms)}</p></section>
   `;

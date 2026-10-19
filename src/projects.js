@@ -12,6 +12,7 @@ function mapProject(row, contributions) {
     techSummary: row.tech_summary,
     difficulty: row.difficulty,
     algorithms: row.algorithms,
+    features: row.features,
     updatedAt: row.updated_at,
     contributions: contributions || [],
   };
@@ -19,7 +20,7 @@ function mapProject(row, contributions) {
 
 function readContributions(db, projectId) {
   return db.prepare(`
-    SELECT author, score, rank, work
+    SELECT author, score, rank, work, detail
     FROM contributions
     WHERE project_id = ?
     ORDER BY rank
@@ -28,6 +29,7 @@ function readContributions(db, projectId) {
     score: row.score,
     rank: row.rank,
     work: JSON.parse(row.work),
+    detail: row.detail ? JSON.parse(row.detail) : null,
   }));
 }
 
@@ -41,11 +43,18 @@ function findOwned(db, userId, repoUrl) {
 function replaceContributions(db, projectId, contributions) {
   db.prepare("DELETE FROM contributions WHERE project_id = ?").run(projectId);
   const insert = db.prepare(`
-    INSERT INTO contributions (project_id, author, score, rank, work)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO contributions (project_id, author, score, rank, work, detail)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   for (const row of contributions || []) {
-    insert.run(projectId, row.author, row.score, row.rank, JSON.stringify(row.work || []));
+    insert.run(
+      projectId,
+      row.author,
+      row.score,
+      row.rank,
+      JSON.stringify(row.work || []),
+      row.detail ? JSON.stringify(row.detail) : null,
+    );
   }
 }
 
@@ -74,9 +83,9 @@ function saveJudgment(db, { userId, result }) {
     db.prepare(`
       UPDATE projects
       SET name = ?, status = '완료', failure_reason = NULL, connection_ok = 1,
-          tech_summary = ?, difficulty = ?, algorithms = ?, updated_at = ?
+          tech_summary = ?, difficulty = ?, algorithms = ?, features = ?, updated_at = ?
       WHERE id = ?
-    `).run(result.name, result.techSummary, result.difficulty, result.algorithms, now, existing.id);
+    `).run(result.name, result.techSummary, result.difficulty, result.algorithms, result.features, now, existing.id);
     replaceContributions(db, existing.id, result.contributions);
     return mapProject(db.prepare("SELECT * FROM projects WHERE id = ?").get(existing.id), readContributions(db, existing.id));
   }
@@ -84,9 +93,9 @@ function saveJudgment(db, { userId, result }) {
   const info = db.prepare(`
     INSERT INTO projects (
       user_id, repo_url, name, status, shared, connection_ok,
-      tech_summary, difficulty, algorithms, updated_at
-    ) VALUES (?, ?, ?, '완료', 0, 1, ?, ?, ?, ?)
-  `).run(userId, result.repoUrl, result.name, result.techSummary, result.difficulty, result.algorithms, now);
+      tech_summary, difficulty, algorithms, features, updated_at
+    ) VALUES (?, ?, ?, '완료', 0, 1, ?, ?, ?, ?, ?)
+  `).run(userId, result.repoUrl, result.name, result.techSummary, result.difficulty, result.algorithms, result.features, now);
   replaceContributions(db, info.lastInsertRowid, result.contributions);
   return mapProject(db.prepare("SELECT * FROM projects WHERE id = ?").get(info.lastInsertRowid), readContributions(db, info.lastInsertRowid));
 }

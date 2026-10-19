@@ -1,3 +1,9 @@
+const AGENT_LOGIN = /^(cursoragent|copilot.*|claude.*|codex.*|devin.*|openhands.*|sweep.*)$|\[bot\]$/i;
+const SAMPLED_PEOPLE = 6;
+const SAMPLES_PER_PERSON = 5;
+const FILES_PER_SAMPLE = 6;
+const PATCH_CHARS = 400;
+
 function parseRepoUrl(input) {
   const trimmed = String(input || "")
     .trim()
@@ -33,65 +39,42 @@ async function github(path) {
   return body;
 }
 
-function buildRanking(contributors, pulls, commits) {
-  const people = new Map();
-  function ensure(login) {
-    if (!people.has(login)) {
-      people.set(login, { author: login, commits: 0, prs: 0, work: [] });
-    }
-    return people.get(login);
+function isAgent(login, type) {
+  return type === "Bot" || AGENT_LOGIN.test(String(login || ""));
+}
+
+function firstLine(message) {
+  return String(message || "").split("\n")[0].trim();
+}
+
+function coAuthors(message) {
+  return [...String(message || "").matchAll(/^co-authored-by:\s*(.+?)\s*<([^>]+)>\s*$/gim)]
+    .map((match) => ({ name: match[1].trim(), email: match[2].trim().toLowerCase() }));
+}
+
+function loginFromCoAuthor(coAuthor, knownLogins) {
+  const noreply = coAuthor.email.match(/^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$/);
+  const candidates = [noreply && noreply[1], coAuthor.name, coAuthor.email.split("@")[0]].filter(Boolean);
+  for (const candidate of candidates) {
+    const hit = knownLogins.find((login) => login.toLowerCase() === candidate.toLowerCase());
+    if (hit) return hit;
   }
-  for (const person of contributors || []) {
-    if (!person.login) continue;
-    ensure(person.login).commits = person.contributions || 0;
+  return noreply ? noreply[1] : null;
+}
+
+function humanFor(commit, knownLogins) {
+  const login = commit.author && commit.author.login;
+  if (login && !isAgent(login, commit.author.type)) return { login, viaAgent: null };
+  for (const coAuthor of coAuthors(commit.commit && commit.commit.message)) {
+    const human = loginFromCoAuthor(coAuthor, knownLogins);
+    if (human && !isAgent(human)) return { login: human, viaAgent: login || "agent" };
   }
-  for (const pull of pulls || []) {
-    const login = pull.user && pull.user.login;
-    if (!login) continue;
-    ensure(login).prs += 1;
-  }
-  for (const commit of commits || []) {
-    const login = commit.author && commit.author.login;
-    const message = commit.commit && commit.commit.message
-      ? commit.commit.message.split("\n")[0]
-      : "";
-    if (!login || !message) continue;
-    const row = ensure(login);
-    if (row.work.length < 5) row.work.push(message);
-  }
-  return [...people.values()]
-    .map((row) => ({
-      author: row.author,
-      score: row.commits + row.prs,
-      work: row.work,
-    }))
-    .sort((a, b) => b.score - a.score || a.author.localeCompare(b.author))
-    .map((row, index) => ({ ...row, rank: index + 1 }));
+  return login ? { login, viaAgent: null } : null;
 }
 
 function decodeReadme(payload) {
   if (!payload || !payload.content) return "";
   return Buffer.from(payload.content, "base64").toString("utf8");
-}
-
-async function fillMissingWork(owner, repo, contributions) {
-  const missing = contributions.filter((row) => row.work.length === 0);
-  await Promise.all(missing.slice(0, 8).map(async (row) => {
-    try {
-      const authored = await github(
-        `/repos/${owner}/${repo}/commits?author=${encodeURIComponent(row.author)}&per_page=5`
-      );
-      row.work = (authored || [])
-        .map((commit) => (commit.commit && commit.commit.message ? commit.commit.message.split("\n")[0] : ""))
-        .filter(Boolean);
-      if (!row.work.length) row.work = [`기록된 기여 ${row.score}건`];
-    } catch {
-      row.work = [`기록된 기여 ${row.score}건`];
-    }
-  }));
-  for (const row of contributions) {
-    if (!row.work.length) row.work = [`기록된 기여 ${row.score}건`];
-  }
 }
 
 async function inspectRepo(url) {
@@ -110,13 +93,134 @@ async function inspectRepo(url) {
       github(`${base}/contributors?per_page=100`),
       github(`${base}/languages`),
       github(`${base}/readme`).catch(() => null),
-      github(`${base}/commits?per_page=30`),
+      github(`${base}/commits?per_page=100`),
       github(`${base}/pulls?state=all&per_page=100`),
       github(`${base}/contents`).catch(() => []),
     ]);
-    const files = Array.isArray(contents) ? contents.map((item) => item.name).filter(Boolean) : [];
-    const contributions = buildRanking(contributors, pulls, commits);
-    await fillMissingWork(parsed.owner, parsed.repo, contributions);
+
+    const people = new Map();
+    const ensure = (login) => {
+      if (!people.has(login)) {
+        people.set(login, {
+          author: login,
+          isAgent: isAgent(login),
+          commits: 0,
+          agentCommits: 0,
+          agentLogins: new Set(),
+          prsOpened: 0,
+          prsMerged: 0,
+          additions: 0,
+          deletions: 0,
+          files: new Set(),
+          samples: [],
+          messages: [],
+        });
+      }
+      return people.get(login);
+    };
+
+    const knownLogins = [
+      ...(contributors || []).map((person) => person.login),
+      ...(pulls || []).map((pull) => pull.user && pull.user.login),
+    ].filter((login) => login && !isAgent(login));
+
+    const agents = [];
+    for (const person of contributors || []) {
+      if (!person.login) continue;
+      if (isAgent(person.login, person.type)) agents.push(person);
+      else ensure(person.login).commits += person.contributions || 0;
+    }
+
+    for (const agent of agents.slice(0, 3)) {
+      const authored = await github(`${base}/commits?author=${encodeURIComponent(agent.login)}&per_page=100`).catch(() => []);
+      let attributed = 0;
+      for (const commit of authored || []) {
+        const owner = humanFor(commit, knownLogins);
+        if (!owner || !owner.viaAgent) continue;
+        const row = ensure(owner.login);
+        row.commits += 1;
+        row.agentCommits += 1;
+        row.agentLogins.add(agent.login);
+        attributed += 1;
+      }
+      const remaining = (agent.contributions || 0) - attributed;
+      if (remaining > 0) ensure(agent.login).commits += remaining;
+    }
+
+    for (const pull of pulls || []) {
+      const login = pull.user && pull.user.login;
+      if (!login) continue;
+      const row = ensure(login);
+      row.prsOpened += 1;
+      if (pull.merged_at) row.prsMerged += 1;
+    }
+
+    for (const commit of commits || []) {
+      if (commit.parents && commit.parents.length > 1) continue;
+      const owner = humanFor(commit, knownLogins);
+      if (!owner) continue;
+      const row = ensure(owner.login);
+      const message = firstLine(commit.commit && commit.commit.message);
+      if (message && row.messages.length < 5) row.messages.push(message);
+      if (row.samples.length < SAMPLES_PER_PERSON) {
+        row.samples.push({ sha: commit.sha, message, viaAgent: owner.viaAgent });
+      }
+    }
+
+    const ranked = [...people.values()]
+      .filter((row) => !row.isAgent)
+      .sort((a, b) => (b.commits + b.prsMerged) - (a.commits + a.prsMerged))
+      .slice(0, SAMPLED_PEOPLE);
+
+    await Promise.all(ranked.filter((row) => !row.samples.length).map(async (row) => {
+      const authored = await github(`${base}/commits?author=${encodeURIComponent(row.author)}&per_page=${SAMPLES_PER_PERSON}`).catch(() => []);
+      for (const commit of authored || []) {
+        const message = firstLine(commit.commit && commit.commit.message);
+        if (message && row.messages.length < 5) row.messages.push(message);
+        row.samples.push({ sha: commit.sha, message, viaAgent: null });
+      }
+    }));
+
+    await Promise.all(ranked.flatMap((row) => row.samples.map(async (sample) => {
+      try {
+        const detail = await github(`${base}/commits/${sample.sha}`);
+        sample.files = (detail.files || []).slice(0, FILES_PER_SAMPLE).map((file) => ({
+          name: file.filename,
+          add: file.additions,
+          del: file.deletions,
+          patch: String(file.patch || "").slice(0, PATCH_CHARS),
+        }));
+        row.additions += (detail.stats && detail.stats.additions) || 0;
+        row.deletions += (detail.stats && detail.stats.deletions) || 0;
+        for (const file of detail.files || []) row.files.add(file.filename);
+      } catch {
+        sample.files = [];
+      }
+    })));
+
+    const contributions = [...people.values()].map((row) => ({
+      author: row.author,
+      isAgent: row.isAgent,
+      commits: row.commits,
+      agentCommits: row.agentCommits,
+      agentLogins: [...row.agentLogins],
+      prsOpened: row.prsOpened,
+      prsMerged: row.prsMerged,
+      additions: row.additions,
+      deletions: row.deletions,
+      filesChanged: row.files.size,
+      sampledCommits: row.samples.filter((sample) => sample.files && sample.files.length).length,
+      messages: row.messages,
+      samples: row.samples,
+    }));
+
+    const fileNames = Array.isArray(contents) ? contents.map((item) => item.name).filter(Boolean) : [];
+    const recentWork = (commits || [])
+      .filter((commit) => !(commit.parents && commit.parents.length > 1))
+      .slice(0, 40)
+      .map((commit) => firstLine(commit.commit && commit.commit.message))
+      .filter(Boolean);
+
     return {
       ok: true,
       status: "완료",
@@ -126,7 +230,8 @@ async function inspectRepo(url) {
       contributions,
       readme: decodeReadme(readme),
       languages: Object.keys(languages || {}),
-      files,
+      files: fileNames,
+      recentWork,
       connectionOk: true,
     };
   } catch (error) {

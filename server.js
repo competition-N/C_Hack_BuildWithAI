@@ -3,7 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const argon2 = require("argon2");
 const { inspectRepo } = require("./src/github");
-const { writeBriefing } = require("./src/groq");
+const { analyzePeople, writeBriefing } = require("./src/groq");
+const { scorePeople } = require("./src/score");
 const { openDatabase } = require("./src/db");
 const {
   normalizeUsername,
@@ -107,6 +108,7 @@ function publicView(project) {
       author: row.author,
       score: row.score,
       rank: row.rank,
+      agentCommits: row.detail ? row.detail.agentCommits : 0,
     })),
   };
 }
@@ -345,20 +347,33 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 200, saved ? { ...saved, ok: saved.status !== "실패", failureReason: saved.failureReason } : inspected);
         return;
       }
-      const briefing = await writeBriefing(inspected);
+      const analysis = await analyzePeople(inspected.contributions.filter((person) => person.samples.length));
+      const contributions = scorePeople(inspected.contributions, analysis);
+      const briefing = await writeBriefing({
+        ...inspected,
+        peopleWork: contributions
+          .filter((row) => row.detail.workSource === "code")
+          .map((row) => ({ person: row.author, work: row.work })),
+      });
       const saved = saveJudgment(db, {
         userId: user ? user.id : null,
         result: {
           ok: true,
           repoUrl: inspected.repoUrl,
           name: inspected.name,
-          contributions: inspected.contributions,
+          contributions,
           techSummary: briefing.techSummary,
           difficulty: briefing.difficulty,
           algorithms: briefing.algorithms,
+          features: briefing.features,
         },
       });
-      sendJson(response, 200, { ...saved, ok: true, briefingSource: briefing.briefingSource });
+      sendJson(response, 200, {
+        ...saved,
+        ok: true,
+        briefingSource: briefing.briefingSource,
+        analyzedPeople: Object.keys(analysis).length,
+      });
       return;
     }
   } catch (error) {

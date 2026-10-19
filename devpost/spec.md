@@ -74,12 +74,21 @@ PRD ref: `prd.md > 추가하기`, `prd.md > 판단 결과`.
 
 ### 기여도
 
-점수 = GitHub contributors의 contributions 수 + 그 사람이 연 PR 수. 순위 = 점수 내림차순. 한 일 = 그 사람 최근 커밋 메시지. 이 숫자는 Groq가 바꾸지 않는다.
+`src/github.js`가 사람별 숫자를 모으고, `src/groq.js`의 `analyzePeople`가 코드를 읽고, `src/score.js`가 점수를 낸다.
+
+- **AI 에이전트 합치기** — 작성자가 `cursoragent`, `copilot*`, `claude*`, `codex*`, `devin*`, `[bot]` 등이면 에이전트로 본다. 그 에이전트의 커밋(최대 100개)에서 `Co-authored-by:` 를 읽어 GitHub 아이디로 바꾼 뒤 그 사람의 커밋으로 센다. 사람마다 `agentCommits`, `agentLogins`를 따로 저장해서, 나중에 "AI 에이전트 커밋 포함" 설정을 붙일 때 다시 판단하지 않고 점수를 다시 낼 수 있다. 공동 작성자를 못 찾은 에이전트 커밋은 에이전트 이름으로 남는다.
+- **작업량** = 커밋 수(합친 에이전트 커밋 포함) + 합쳐진 PR 수.
+- **코드 표본** — 작업량 상위 6명, 사람마다 최근 커밋 5개, 커밋마다 파일 6개, 파일마다 바뀐 코드 앞 400자. 전체가 14,000자를 넘으면 코드 길이를 반씩 줄인다. 근거의 파일 수와 줄 수는 이 표본 기준이다.
+- **난이도** = 모델이 표본을 읽고 매긴 1~5 정수와 이유 한 문장. 1=문서·오타·설정, 2=단순 화면·데이터 수정, 3=기능 하나, 4=여러 모듈에 걸친 기능·알고리즘, 5=복잡한 알고리즘·구조·보안. `temperature 0`, gpt-oss는 `reasoning_effort: low`. 분당 한도(429)에 걸리면 `retry-after`만큼 한 번 기다린다.
+- **점수** = 작업량 × 난이도. 분석되지 않은 사람은 난이도 1로 계산하고 "난이도 분석 안 됨"으로 보인다.
+- **한 일** = 모델이 코드를 읽고 쓴 2~4개 항목. 없으면 커밋 메시지.
+- 한계: 표본은 최근 커밋이라 오래전에 큰 일을 한 사람은 낮게 나올 수 있다. 같은 코드도 다시 판단하면 난이도가 조금 다를 수 있다.
+
 PRD ref: `prd.md > 기여도`.
 
 ### 문서
 
-Groq에는 README 일부, 사용 언어, 상위 파일 이름만 보내고, 기술 요약, 난이도 문장, 알고리즘 문장만 받는다. 실패하면 README 첫 문단과 언어 목록을 기술 요약으로 저장하고, 난이도와 알고리즘에는 모델 응답이 없었다는 문장을 저장한다.
+사람별 분석이 끝난 뒤, Groq에 README 일부, 사용 언어, 상위 파일 이름, 최근 커밋 메시지 40개, 사람별 한 일을 보내고 기술 요약, 만든 기능(3~8개), 난이도 문장, 알고리즘 문장을 받는다. 만든 기능은 `projects.features`에 저장한다. 실패하면 README 첫 문단과 언어 목록을 기술 요약으로 저장하고, 난이도와 알고리즘에는 모델 응답이 없었다는 문장을 저장한다.
 PRD ref: `prd.md > 문서`.
 
 ### 설정
@@ -109,7 +118,7 @@ SQLite 데이터베이스 파일은 SQLCipher를 적용하여 AES-256으로 디�
 - **users** — id, username, password_hash, created_at, nickname, account_public. 비밀번호 원문은 없다. nickname은 가입 때 아이디와 같고, account_public은 처음에 0이다. 기존 파일에는 서버가 켜질 때 두 칸을 추가한다.
 - **sessions** — id, user_id, expires_at. 쿠키에는 id만 있다.
 - **projects** — id, user_id, repo_url, status(`진행중` `완료` `실패`), failure_reason, shared, connection_ok, tech_summary, difficulty, algorithms, updated_at.
-- **contributions** — id, project_id, author, score, rank, work.
+- **contributions** — id, project_id, author, score, rank, work, detail. detail은 JSON으로 workload, difficulty, difficultyReason, workSource, commits, agentCommits, agentLogins, prsOpened, prsMerged, additions, deletions, filesChanged, sampledCommits, isAgent를 담는다.
 
 갱신이 끝나기 전에 다시 열면 이전 `projects`와 `contributions`가 그대로다. 완료는 GitHub 점수와 문서 문장이 모두 저장된 때다. Groq만 실패하면 대체 문장을 저장하고 완료로 둔다.
 
@@ -175,7 +184,7 @@ project/
 ## What Was Simplified and Why
 
 - **주소를 넣은 요청 안에서 판단을 끝냄** 대신 대기열이나 웹훅 — 진행중은 그 요청이 끝나기 전의 상태다. 백그라운드 작업은 데모에 필요 없다.
-- **기여 점수는 커밋 수와 PR 수** 대신 모델이 난이도로 점수를 바꿈 — 학습자가 점수와 순위는 GitHub 데이터로 두라고 했다. PR만 열고 커밋 작성자가 다른 경우는 커밋 쪽에 안 잡힐 수 있다.
+- **난이도는 최근 커밋 표본으로만 매김** 대신 전체 기록을 읽음 — Groq 무료 구간이 분당 8,000 토큰이라 전체 코드를 보낼 수 없다. 처음에는 점수를 GitHub 숫자로만 냈으나, `5-build` 피드백으로 학습자가 코드 난이도를 점수에 넣기로 바꿨다.
 - **SQLCipher는 디스크의 파일만 암호화** 대신 서버가 뚫려도 내용을 못 읽게 하는 구성 — 서버가 켜져 있으면 열쇠도 같은 VM에 있다. 그 한계를 숨기지 않는다.
 - **비공개 GitHub 저장소와 웹훅은 없음** — `scope.md > Later`, `prd.md > Deferred From the POC`.
 
@@ -183,7 +192,7 @@ project/
 
 - 학습자: 페이지는 HTML, CSS, JavaScript. 개인 공개 홈페이지 VM에 올리고, 영상과 링크로 다른 사람이 판단하게 한다.
 - 학습자: 작은 서버와 SQLite. 계정은 지금 둔다. 공유는 로그인 후 프로젝트를 등록하고 설정에서 켠다.
-- 학습자: 요약, 난이도, 알고리즘 문장만 Groq 무료 구간. 점수와 순위는 GitHub 데이터.
+- 학습자: 요약, 난이도, 알고리즘 문장만 Groq 무료 구간. 점수와 순위는 GitHub 데이터. `5-build`에서 바꿈: 점수에 코드 난이도를 넣고, 한 일은 코드 변경을 읽어 요약하며, 공동 작성자가 있는 AI 에이전트 커밋은 그 사람에게 합친다.
 - 학습자: "SQLite 데이터베이스 파일은 SQLCipher를 적용하여 AES-256으로 디스크 암호화 저장합니다." 이 문장을 명세에 넣으라고 했다.
 - 학습자가 물은 점: SQLite에 로그인 암호화가 있는지. 확인 결과는, 로그인 비밀번호는 [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet)대로 Argon2id 해시이고, SQLCipher는 파일 암호화라는 것이다. 학습자가 그 파일 암호화 문장을 추가하라고 해서 둘 다 명세에 넣었다.
 - 구현에서 따라온 선택: 서버는 Node.js, 계정 입력은 아이디와 비밀번호, 세션은 서버 저장 아이디와 httpOnly 쿠키. 승인 때 바꾸면 이 문서를 고친다.
