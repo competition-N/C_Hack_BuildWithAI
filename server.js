@@ -2,7 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const argon2 = require("argon2");
-const { inspectRepo } = require("./src/github");
+const { inspectRepo, listUserRepos } = require("./src/github");
 const { analyzePeople, writeBriefing } = require("./src/groq");
 const { scorePeople } = require("./src/score");
 const { openDatabase } = require("./src/db");
@@ -186,6 +186,18 @@ async function judgeRepo(url) {
     briefingSource: briefing.briefingSource,
     analyzedPeople: Object.keys(analysis).length,
   };
+}
+
+const REPO_LIST_TTL_MS = 5 * 60 * 1000;
+const repoListCache = new Map();
+
+async function githubReposFor(login) {
+  const key = login.toLowerCase();
+  const cached = repoListCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.repos;
+  const repos = await listUserRepos(login);
+  repoListCache.set(key, { repos, expires: Date.now() + REPO_LIST_TTL_MS });
+  return repos;
 }
 
 function myProjectView(userId, login, repoId) {
@@ -391,6 +403,16 @@ const server = http.createServer(async (request, response) => {
 
       if (request.method === "GET" && url.pathname === "/api/my/projects") {
         sendJson(response, 200, { githubLogin: user.github_login, projects: userProjects(db, user.id, user.github_login) });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/my/projects/github-repos") {
+        const added = new Set(userProjects(db, user.id, user.github_login).map((project) => project.repoUrl.toLowerCase()));
+        const repos = (await githubReposFor(user.github_login)).map((repo) => ({
+          ...repo,
+          added: added.has(repo.url.toLowerCase()),
+        }));
+        sendJson(response, 200, { repos });
         return;
       }
 

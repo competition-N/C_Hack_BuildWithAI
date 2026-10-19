@@ -261,4 +261,38 @@ async function inspectRepo(url) {
   }
 }
 
-module.exports = { parseRepoUrl, inspectRepo };
+async function listUserRepos(login) {
+  const user = encodeURIComponent(login);
+  const [owned, searched] = await Promise.all([
+    github(`/users/${user}/repos?type=all&sort=pushed&per_page=100`).catch(() => []),
+    github(`/search/commits?q=${encodeURIComponent(`author:${login}`)}&sort=author-date&order=desc&per_page=100`)
+      .catch(() => ({ items: [] })),
+  ]);
+  const repos = new Map();
+  for (const repo of owned || []) {
+    if (repo.private) continue;
+    repos.set(repo.full_name.toLowerCase(), {
+      fullName: repo.full_name,
+      url: repo.html_url,
+      description: repo.description || "",
+      pushedAt: repo.pushed_at,
+      fork: Boolean(repo.fork),
+      source: repo.owner && repo.owner.login.toLowerCase() === login.toLowerCase() ? "own" : "member",
+    });
+  }
+  for (const item of (searched && searched.items) || []) {
+    const repo = item.repository;
+    if (!repo || repo.private || repos.has(repo.full_name.toLowerCase())) continue;
+    repos.set(repo.full_name.toLowerCase(), {
+      fullName: repo.full_name,
+      url: repo.html_url,
+      description: repo.description || "",
+      pushedAt: item.commit && item.commit.author ? item.commit.author.date : null,
+      fork: Boolean(repo.fork),
+      source: "contributed",
+    });
+  }
+  return [...repos.values()].sort((a, b) => String(b.pushedAt || "").localeCompare(String(a.pushedAt || "")));
+}
+
+module.exports = { parseRepoUrl, inspectRepo, listUserRepos };

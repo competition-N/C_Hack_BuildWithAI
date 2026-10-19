@@ -90,6 +90,35 @@ th { white-space: nowrap; }
   text-decoration: none;
 }
 .work li { margin-bottom: 6px; }
+.filter {
+  font: inherit;
+  width: 100%;
+  max-width: 42rem;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.repo-list { list-style: none; padding: 0; margin: 12px 0; max-width: 52rem; }
+.repo-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.repo-list button {
+  font: inherit;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+.manual-add { margin: 12px 0; }
+.manual-add summary { cursor: pointer; color: var(--muted); }
 .badge {
   display: inline-block;
   margin-top: 4px;

@@ -18,6 +18,8 @@ let ranking = [];
 let rankingQuery = "";
 let personPage = null;
 let myProjects = [];
+let githubRepos = null;
+let repoFilter = "";
 let openedRepoId = null;
 let manageOpen = false;
 let notice = "";
@@ -72,6 +74,10 @@ async function go(next) {
   if (view === "projects") await loadMyProjects();
   if (view === "public") await loadRanking();
   render();
+  if (view === "projects" && me && me.githubLogin && githubRepos === null) {
+    await loadGithubRepos();
+    if (view === "projects" && !openedRepoId) render();
+  }
 }
 
 function syncNav() {
@@ -315,6 +321,32 @@ function myProjectCard(project) {
   `;
 }
 
+const repoSources = { own: "내 저장소", member: "협업자", contributed: "커밋한 저장소" };
+
+function repoPicker() {
+  if (githubRepos === null) return "<p class='muted'>GitHub 저장소 목록을 불러오는 중입니다.</p>";
+  if (!githubRepos.length) return "<p class='muted'>불러온 공개 저장소가 없습니다. 아래에서 주소로 추가할 수 있습니다.</p>";
+  const query = repoFilter.toLowerCase();
+  const shown = githubRepos.filter((repo) => !query || repo.fullName.toLowerCase().includes(query)).slice(0, 50);
+  const rows = shown.map((repo) => `
+    <li>
+      <div>
+        <strong>${escapeHtml(repo.fullName)}</strong>
+        <span class="badge">${repoSources[repo.source] || ""}</span>${repo.fork ? "<span class='badge'>포크</span>" : ""}
+        ${repo.description ? `<div class="muted small">${escapeHtml(repo.description)}</div>` : ""}
+      </div>
+      ${repo.added
+        ? "<span class='muted small'>추가됨</span>"
+        : `<button type="button" data-add-repo="${escapeHtml(repo.url)}">추가</button>`}
+    </li>
+  `).join("");
+  return `
+    <p class="muted small">${escapeHtml(me.githubLogin)}의 공개 저장소와 커밋한 공개 저장소 ${githubRepos.length}개</p>
+    <input type="search" id="repo-filter" class="filter" value="${escapeHtml(repoFilter)}" placeholder="저장소 이름으로 찾기" aria-label="저장소 이름으로 찾기">
+    ${shown.length ? `<ul class="repo-list">${rows}</ul>` : "<p class='muted'>찾는 저장소가 없습니다.</p>"}
+  `;
+}
+
 function projectsView() {
   if (!me.githubLogin) {
     return `
@@ -339,7 +371,12 @@ function projectsView() {
       </div>
       <p class="muted small">${escapeHtml(opened.repoUrl)}</p>
     `
-    : `<h3>추가하기</h3><p class="muted small">${escapeHtml(me.githubLogin)}이(가) 기여한 공개 저장소만 추가됩니다.</p>${judgeForm("projects-judge-form", "추가하기")}`;
+    : `<h3>추가하기</h3>${repoPicker()}
+       <details class="manual-add">
+         <summary>목록에 없는 저장소는 주소로 추가</summary>
+         <p class="muted small">${escapeHtml(me.githubLogin)}이(가) 기여한 공개 저장소만 추가됩니다.</p>
+         ${judgeForm("projects-judge-form", "추가하기")}
+       </details>`;
   return `
     <h2>프로젝트 관리</h2>
     <p class="muted">${escapeHtml(me.githubLogin)}의 기여</p>
@@ -480,21 +517,38 @@ function bindProjects() {
       render();
     });
   });
+  const addRepo = async (url) => {
+    pending("진행중 — 저장소 전체를 판단한 뒤 내 기여만 가져옵니다. 팀원이 많으면 1~2분 걸릴 수 있습니다.");
+    const { payload } = await api("/api/my/projects", { method: "POST", body: JSON.stringify({ url }) });
+    await loadMyProjects();
+    if (payload.ok && payload.project) {
+      openedRepoId = payload.project.repoId;
+      notice = "추가했습니다.";
+      githubRepos = (githubRepos || []).map((repo) => (repo.url.toLowerCase() === payload.project.repoUrl.toLowerCase() ? { ...repo, added: true } : repo));
+    } else {
+      notice = payload.failureReason || "추가하지 못했습니다.";
+    }
+    render();
+  };
+  const filter = document.querySelector("#repo-filter");
+  if (filter) {
+    filter.addEventListener("input", () => {
+      repoFilter = filter.value;
+      const position = filter.selectionStart;
+      render();
+      const next = document.querySelector("#repo-filter");
+      next.focus();
+      next.setSelectionRange(position, position);
+    });
+  }
+  document.querySelectorAll("[data-add-repo]").forEach((button) => {
+    button.addEventListener("click", () => addRepo(button.dataset.addRepo));
+  });
   const add = document.querySelector("#projects-judge-form");
   if (add) {
-    add.addEventListener("submit", async (event) => {
+    add.addEventListener("submit", (event) => {
       event.preventDefault();
-      const url = new FormData(add).get("url");
-      pending("진행중 — 저장소 전체를 판단한 뒤 내 기여만 가져옵니다.");
-      const { payload } = await api("/api/my/projects", { method: "POST", body: JSON.stringify({ url }) });
-      await loadMyProjects();
-      if (payload.ok && payload.project) {
-        openedRepoId = payload.project.repoId;
-        notice = "추가했습니다.";
-      } else {
-        notice = payload.failureReason || "추가하지 못했습니다.";
-      }
-      render();
+      addRepo(new FormData(add).get("url"));
     });
   }
   const rejudge = document.querySelector("#rejudge");
@@ -533,6 +587,8 @@ function bindAccount() {
     disconnect.addEventListener("click", async () => {
       const { payload } = await api("/api/account/github/disconnect", { method: "POST" });
       if (payload.user) me = payload.user;
+      githubRepos = null;
+      myProjects = [];
       accountMessage("GitHub 연결을 해제했습니다.", true);
     });
   }
@@ -584,8 +640,19 @@ function bindAccount() {
 function signedOut() {
   me = null;
   myProjects = [];
+  githubRepos = null;
+  repoFilter = "";
   openedRepoId = null;
   manageOpen = false;
+}
+
+async function loadGithubRepos() {
+  try {
+    const { response, payload } = await api("/api/my/projects/github-repos");
+    githubRepos = response.ok ? payload.repos || [] : [];
+  } catch {
+    githubRepos = [];
+  }
 }
 
 async function loadMyProjects() {

@@ -65,7 +65,7 @@ PRD ref: `prd.md > 프로젝트 목록`.
 
 ### 프로젝트 목록
 
-`GET /api/my/projects`. GitHub가 연결된 계정만 쓴다(없으면 409). `user_projects`로 등록한 저장소를 고르고, 저장소마다 `repo_people`에서 내 GitHub 아이디의 행만 돌려준다. 다른 팀원의 행과 기술 상세는 보내지 않는다. `DELETE /api/my/projects/{repoId}`는 내 목록에서만 뺀다.
+`GET /api/my/projects`. GitHub가 연결된 계정만 쓴다(없으면 409). `user_projects`로 등록한 저장소를 고르고, 저장소마다 `repo_people`에서 내 GitHub 아이디의 행만 돌려준다. 다른 팀원의 행과 기술 상세는 보내지 않는다. `DELETE /api/my/projects/{repoId}`는 내 목록에서만 뺀다. `GET /api/my/projects/github-repos`는 서버의 `GITHUB_TOKEN`으로 `GET /users/{login}/repos?type=all&sort=pushed`(내 저장소, 협업자 저장소)와 `GET /search/commits?q=author:{login}`(내가 커밋한 다른 사람의 저장소)을 합쳐 공개 저장소만 돌려준다. 사용자마다 5분 동안 서버 메모리에 담아 둔다. 사용자의 GitHub 토큰은 쓰지 않는다.
 PRD ref: `prd.md > 프로젝트 목록`, `prd.md > 설정`.
 
 ### 추가하기와 판단
