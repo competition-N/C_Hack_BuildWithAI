@@ -7,37 +7,29 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#screen">본문으로 건너뛰기</a>
   <div class="app">
-    <nav class="side" aria-label="카테고리">
+    <aside class="side">
       <p class="brand">팀 프로젝트 기여도</p>
-      <button type="button" data-view="main" aria-current="page">메인</button>
-      <button type="button" data-view="public">공개 프로젝트</button>
-      <button type="button" data-view="login" id="nav-login">로그인</button>
-      <div class="manage" id="nav-manage" hidden>
-        <button type="button" id="manage-toggle" aria-expanded="false" aria-controls="manage-menu">관리</button>
-        <div class="submenu" id="manage-menu" hidden>
-          <button type="button" data-view="account">설정</button>
-          <button type="button" data-view="projects">프로젝트 관리</button>
-        </div>
-      </div>
-    </nav>
-    <div class="stage">
-      <header class="top" id="top" hidden>
-        <h1 id="project-name"></h1>
-        <div class="tabs" role="tablist">
-          <button type="button" data-tab="all" aria-selected="true">전체</button>
-          <button type="button" data-tab="score">기여도</button>
-          <button type="button" data-tab="doc">문서</button>
-        </div>
-      </header>
-      <main id="screen">
-        <p class="lede">대학생 팀 프로젝트에서 버스와 무임승차를 가려 내는 화면입니다. 서로 말한 기여가 아니라, 공개 GitHub 저장소에 남은 커밋과 PR로 사람마다 순위, 세부 점수, 한 일을 보여 줍니다. 그 옆에는 기술 요약, 난이도, 알고리즘을 같이 둡니다.</p>
-        <form class="judge" id="judge-form">
-          <input name="url" type="url" required placeholder="https://github.com/소유자/저장소" aria-label="공개 저장소 주소">
-          <button type="submit">판단하기</button>
-        </form>
-      </main>
-    </div>
+      <nav aria-label="주 메뉴">
+        <ul class="nav-list">
+          <li><button type="button" data-view="main" aria-current="page">메인</button></li>
+          <li><button type="button" data-view="public">공개 프로젝트</button></li>
+          <li id="nav-login"><button type="button" data-view="login">로그인</button></li>
+          <li id="nav-manage" hidden>
+            <button type="button" id="manage-toggle" class="nav-group" aria-expanded="false" aria-controls="manage-menu">관리</button>
+            <ul class="submenu" id="manage-menu" hidden>
+              <li><button type="button" data-view="account">설정</button></li>
+              <li><button type="button" data-view="projects">프로젝트 관리</button></li>
+            </ul>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+    <main id="screen" class="content" tabindex="-1">
+      <h1>저장소 판단</h1>
+      <p class="muted">불러오는 중입니다.</p>
+    </main>
   </div>
   <script src="app.js"></script>
 </body>

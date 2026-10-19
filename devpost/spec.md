@@ -49,7 +49,9 @@ VM의 Node 서버가 페이지를 제공한다. 데모 영상과 공개 GitHub �
 
 ## Look and Feel
 
-`prd.md > Look and Feel`과 `scope.md > Inspiration & Identity`를 그대로 쓴다. 참고는 [이환 사키리 가이드](https://alkapa.gg/neverness-to-everness/characters/sagiri)의 아카이브 느낌이다. 글자와 색은 정하지 않았다. 정한 배치는 CSS 그리드로 만든다. 왼쪽 열은 `100vh`로 화면 왼쪽 전체를 차지한다. 프로젝트 이름과 서브 카테고리 상단은 그 열의 오른쪽 칸에만 둔다. 프레임워크가 없으므로 CSS가 이 배치를 직접 그린다.
+`prd.md > Look and Feel`과 `scope.md > Inspiration & Identity`를 그대로 쓴다. 참고는 [이환 사키리 가이드](https://alkapa.gg/neverness-to-everness/characters/sagiri)의 어두운 왼쪽 메뉴다. 배치는 CSS 그리드다. 왼쪽 메뉴는 화면 높이만큼 고정되고, 화면 제목과 결과 탭은 오른쪽 본문 안에만 있다.
+
+토큰의 출처는 `design/tokens/colors.md`, `typography.md`, `spacing.md`이고, `public/styles.css`의 `:root`가 그 값을 그대로 쓴다. 표에 없는 색이나 간격은 쓰지 않는다. 화면마다 `h1`이 하나다. 결과 탭은 `aria-pressed` 버튼 묶음이고, 화면을 바꾸면 그 화면의 `h1`으로 초점을 옮긴다. 안내 문구는 그 동작을 한 섹션 바로 아래에 `role="status"`(실패는 `role="alert"`)로 붙인다. 좁음(~719px), 중간(720~1023px), 넓음(1024px~) 세 구간을 둔다. 좁은 화면에서는 왼쪽 메뉴가 위쪽 가로 메뉴가 되고, 표는 가로로 스크롤된다.
 
 ## Components
 

@@ -127,6 +127,10 @@ function userProjects(db, userId, login) {
     status: row.status,
     failureReason: row.failure_reason,
     updatedAt: row.updated_at,
+    techSummary: row.tech_summary,
+    features: row.features,
+    difficulty: row.difficulty,
+    algorithms: row.algorithms,
     peopleCount: db.prepare("SELECT count(*) AS n FROM repo_people WHERE repo_id = ?").get(row.id).n,
     me: login ? myRow(db, row.id, login) : null,
   }));

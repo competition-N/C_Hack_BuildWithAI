@@ -68,6 +68,8 @@ Build mode: fast
 - [ ] 기술 상세는 메인에서만, 프로젝트 관리는 GitHub 연결 후 내 기여만 — 남의 저장소 추가 거절 확인(테스트 계정에 DB로 GitHub 아이디를 넣어 확인). 학습자 확인 대기
 - [ ] GitHub OAuth 연결 — 설정이 없을 때의 안내와 연결 경로 확인. 실제 GitHub 로그인은 학습자가 OAuth App을 만든 뒤 확인 대기
 - [ ] 프로젝트 관리에서 연결한 GitHub의 공개 저장소 목록을 불러와 골라 추가, 이름으로 찾기, 주소 입력은 접힌 칸으로 — NamDanChu로 5개 목록, 찾기, KIT_Contest 추가를 Edge로 확인. 학습자 확인 대기
+- [ ] 프로젝트 관리 상세에 기술 요약·만든 기능·난이도·알고리즘 — Edge로 확인. 학습자 확인 대기
+- [ ] `.cursor/rules` 디자인 규칙으로 다시 디자인: `design/tokens/` 토큰, AA 대비 계산, 화면마다 h1 하나, 보이는 라벨, 세 가지 너비 — 7개 화면 × 1280/900/390px 확인, 스크립트 오류 없음. 학습자 확인 대기
 - [ ] Final review complete — feedback resolved and learner confirms ready to ship
 
 ## Code Tour and App Map
