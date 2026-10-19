@@ -19,6 +19,7 @@ let publicProjects = [];
 let ownerPage = null;
 let openedId = null;
 let manageOpen = false;
+let rejudgeMessage = "";
 let serverDown = false;
 
 const serverNotice = `
@@ -208,11 +209,20 @@ function projectList() {
     </li>
   `).join("");
   const opened = openedId ? projects.find((project) => project.id === openedId) : null;
+  const action = opened
+    ? `
+      <div class="row-actions">
+        <button type="button" id="rejudge" class="primary">재판단하기</button>
+        <button type="button" id="close-project">닫기</button>
+        <span id="rejudge-status" class="muted" role="status">${escapeHtml(rejudgeMessage)}</span>
+      </div>
+      <p class="muted small">${escapeHtml(opened.repoUrl)}을 다시 판단합니다. 실패하면 이전 결과는 그대로 남습니다.</p>
+    `
+    : `<h3>추가하기</h3>${judgeForm("projects-judge-form")}`;
   return `
     <h2>프로젝트 관리</h2>
     ${projects.length ? `<ul class="projects">${rows}</ul>` : "<p>목록이 비어 있습니다. 아래에서 추가하세요.</p>"}
-    <h3>추가하기</h3>
-    ${judgeForm("projects-judge-form")}
+    ${action}
     <div id="opened">${opened ? resultBody(opened) : ""}</div>
   `;
 }
@@ -337,7 +347,10 @@ function render() {
     screen.innerHTML = projectList();
     bindJudge("projects-judge-form");
     bindProjectList();
-    if (openedId) bindProjectSettings();
+    if (openedId) {
+      bindProjectSettings();
+      bindRejudge();
+    }
     return;
   }
 
@@ -410,10 +423,43 @@ function bindProjectList() {
   document.querySelectorAll("[data-open]").forEach((button) => {
     button.addEventListener("click", () => {
       openedId = Number(button.dataset.open);
+      rejudgeMessage = "";
       tab = "all";
       syncTabs();
       render();
     });
+  });
+}
+
+function bindRejudge() {
+  const rejudge = document.querySelector("#rejudge");
+  const close = document.querySelector("#close-project");
+  if (!rejudge || !close) return;
+  close.addEventListener("click", () => {
+    openedId = null;
+    rejudgeMessage = "";
+    render();
+  });
+  rejudge.addEventListener("click", async () => {
+    const project = projects.find((item) => item.id === openedId);
+    if (!project) return;
+    rejudge.disabled = true;
+    close.disabled = true;
+    document.querySelector("#rejudge-status").textContent = "진행중";
+    try {
+      const { payload } = await api("/api/judge", { method: "POST", body: JSON.stringify({ url: project.repoUrl }) });
+      await loadProjects();
+      openedId = payload.id || project.id;
+      if (payload.status === "실패") rejudgeMessage = `재판단 실패: ${payload.failureReason || "이유를 받지 못했습니다."}`;
+      else if (payload.failureReason) rejudgeMessage = `재판단 실패: ${payload.failureReason} 이전 결과를 보여 줍니다.`;
+      else rejudgeMessage = "다시 판단했습니다.";
+      tab = "all";
+      syncTabs();
+    } catch {
+      serverDown = true;
+    } finally {
+      render();
+    }
   });
 }
 

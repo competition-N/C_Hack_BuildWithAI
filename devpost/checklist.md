@@ -62,6 +62,7 @@ Build mode: fast
 - [ ] 공개 프로젝트에서 등록한 사람 닉네임을 누르면 그 사람의 공유 프로젝트 목록 — Edge로 눌러 확인. 학습자 확인 대기
 - [ ] 공동 작성자가 있는 AI 에이전트 커밋을 그 사람에게 합치고 "AI 에이전트 N건 포함" 표시, 에이전트 커밋 수는 따로 저장 — KIT_Contest에서 cursoragent 4건이 NamDanChu로 합쳐짐 확인. 학습자 확인 대기
 - [ ] 점수 = 작업량 × 코드 난이도, 근거(커밋·PR·파일·줄·난이도 이유), 코드를 읽은 한 일, 프로젝트 전체의 만든 기능 — KIT_Contest, express(6명 분석, 약 10초), Hello-World 확인. 학습자 확인 대기
+- [ ] 프로젝트를 열면 추가하기 대신 재판단하기·닫기 — Edge로 열기, 재판단(진행중 → "다시 판단했습니다.", 같은 프로젝트 갱신), 닫기 확인. 학습자 확인 대기
 - [ ] Final review complete — feedback resolved and learner confirms ready to ship
 
 ## Code Tour and App Map
