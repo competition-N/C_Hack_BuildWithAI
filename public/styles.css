@@ -98,6 +98,8 @@ a { color: var(--color-accent); }
 .side {
   position: sticky;
   top: 0;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow-y: auto;
   padding: var(--space-6) var(--space-4);
@@ -134,6 +136,15 @@ a { color: var(--color-accent); }
   font-weight: 600;
 }
 .submenu button { font-size: var(--text-sm); }
+
+.side .lang-toggle {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-side-active);
+  border-radius: 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
 
 .nav-group {
   display: flex;
@@ -418,6 +429,11 @@ td.score { font-weight: 700; }
 .choice { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .choice input { width: 16px; height: 16px; margin: 0; accent-color: var(--color-accent); }
 
+.guide-details { margin-top: var(--space-6); }
+.guide-details summary { margin-bottom: var(--space-4); font-weight: 700; cursor: pointer; }
+.doc-grid .section h3 + .doc-list { margin-top: 0; }
+.doc-grid .section .doc-list + h3 { margin-top: var(--space-2); }
+
 .manual-add summary { color: var(--color-text-muted); cursor: pointer; }
 .manual-add[open] summary { margin-bottom: var(--space-3); }
 
@@ -444,6 +460,7 @@ td.score { font-weight: 700; }
   .side button { width: auto; }
   .submenu { display: flex; flex-wrap: wrap; padding-left: 0; }
   #nav-manage { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+  .side .lang-toggle { margin-top: var(--space-3); align-self: flex-start; border-top: 0; padding-top: var(--space-2); }
   .content { padding: var(--space-5) var(--space-4); }
   .inline-form { flex-direction: column; }
   .login-grid { grid-template-columns: minmax(0, 1fr); }

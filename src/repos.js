@@ -116,6 +116,7 @@ function rankingRows(db) {
     JOIN repos ON repos.id = repo_people.repo_id
     WHERE repos.status = '완료'
       AND coalesce(json_extract(repo_people.detail, '$.isAgent'), 0) = 0
+      AND repo_people.score > 0
       AND ${notHiddenByOwner}
     GROUP BY lower(repo_people.github_login)
     ORDER BY total DESC, lower(login)
@@ -128,7 +129,7 @@ function personProjects(db, login) {
            repo_people.work, repo_people.detail
     FROM repo_people
     JOIN repos ON repos.id = repo_people.repo_id
-    WHERE repos.status = '완료' AND repo_people.github_login = ? AND ${notHiddenByOwner}
+    WHERE repos.status = '완료' AND repo_people.github_login = ? AND repo_people.score > 0 AND ${notHiddenByOwner}
     ORDER BY repo_people.score DESC
   `).all(login).map((row) => ({
     repoId: row.id,

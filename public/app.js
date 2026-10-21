@@ -6,6 +6,7 @@ const navLogin = document.querySelector("#nav-login");
 const navManage = document.querySelector("#nav-manage");
 const manageToggle = document.querySelector("#manage-toggle");
 const manageMenu = document.querySelector("#manage-menu");
+const langToggle = document.querySelector("#lang-toggle");
 
 let lang = "ko";
 let view = "main";
@@ -50,7 +51,18 @@ function setLanguage(next) {
     element.textContent = t(element.dataset.i18n);
   });
   document.querySelector("#main-nav").setAttribute("aria-label", t("nav.label"));
+  langToggle.textContent = lang === "ko" ? "Language: KR" : "Language: EN";
+  langToggle.setAttribute("aria-label", t("lang.toggle"));
 }
+
+langToggle.addEventListener("click", async () => {
+  setLanguage(lang === "ko" ? "en" : "ko");
+  render();
+  langToggle.focus();
+  if (!me) return;
+  const { response, payload } = await api("/api/account/language", { method: "POST", body: JSON.stringify({ language: lang }) });
+  if (response.ok && payload.user) me = payload.user;
+});
 
 function errorText(code, fallback) {
   if (code && STRINGS.ko[`error.${code}`]) return t(`error.${code}`);
@@ -161,6 +173,7 @@ function evidence(detail) {
     `${t("ev.commits", { n: detail.commits })}${detail.agentCommits ? t("ev.ai", { n: detail.agentCommits }) : ""}`,
     t("ev.prs", { m: detail.prsMerged, o: detail.prsOpened }),
     detail.analyzedCommits ? t("ev.analyzed", { n: detail.analyzedCommits }) : t("ev.notAnalyzed"),
+    detail.unreadCommits ? t("ev.unread", { n: detail.unreadCommits }) : "",
     detail.sampledCommits
       ? t("ev.code", { s: detail.sampledCommits, f: detail.filesChanged, a: detail.additions, d: detail.deletions })
       : "",
@@ -241,6 +254,35 @@ function privacyNotice() {
   `;
 }
 
+function systemGuide() {
+  const list = (prefix, count, tag = "ul", params = {}) => `
+    <${tag} class="doc-list">${Array.from({ length: count }, (_, index) => `<li>${escapeHtml(t(`${prefix}${index + 1}`, params))}</li>`).join("")}</${tag}>
+  `;
+  return `
+    <div class="doc-grid">
+      <section class="section">
+        <h3>${t("guide.howTitle")}</h3>
+        ${list("guide.step", 4, "ol")}
+      </section>
+      <section class="section">
+        <h3>${t("guide.resultTitle")}</h3>
+        ${list("guide.result", 5)}
+        <p class="muted small">${t("guide.notScored")}</p>
+      </section>
+      <section class="section">
+        <h3>${t("guide.canTitle")}</h3>
+        ${list("guide.can", 3)}
+        <h3>${t("guide.cannotTitle")}</h3>
+        ${list("guide.cannot", 4, "ul", { n: judgesPerHour })}
+      </section>
+      <section class="section">
+        <h3>${t("guide.levelTitle")}</h3>
+        ${list("guide.level", 5)}
+      </section>
+    </div>
+  `;
+}
+
 function mainView() {
   const head = pageHead(t("main.title"), t("main.lede"));
   const form = `
@@ -250,14 +292,27 @@ function mainView() {
       ${privacyNotice()}
     </div>
   `;
-  if (!result) return head + form;
+  if (!result) {
+    return head + form + `
+      <section class="stack result" aria-labelledby="guide-title">
+        <h2 id="guide-title">${t("guide.title")}</h2>
+        ${systemGuide()}
+      </section>
+    `;
+  }
+  const guide = `
+    <details class="guide-details">
+      <summary>${t("guide.title")}</summary>
+      ${systemGuide()}
+    </details>
+  `;
   if (result.ok === false) {
     return head + form + `
       <section class="section result" aria-labelledby="fail-title">
         <h2 id="fail-title">${t("result.failTitle")}</h2>
         <p class="status status-fail">${escapeHtml(errorText(result.failureCode, result.failureReason))}</p>
       </section>
-    `;
+    ` + guide;
   }
   const tabs = [["all", t("tabs.all")], ["score", t("tabs.score")], ["doc", t("tabs.doc")]].map(([key, label]) => `
     <button type="button" data-tab="${key}" aria-pressed="${tab === key ? "true" : "false"}">${label}</button>
@@ -276,7 +331,7 @@ function mainView() {
       <div class="tabs" role="group" aria-label="${t("tabs.label")}">${tabs}</div>
       ${body}
     </section>
-  `;
+  ` + guide;
 }
 
 function rankingView() {
