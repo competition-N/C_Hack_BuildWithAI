@@ -2,9 +2,10 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const argon2 = require("argon2");
-const { inspectRepo, listUserRepos } = require("./src/github");
+const { parseRepoUrl, inspectRepo, listUserRepos } = require("./src/github");
 const { analyzePeople, writeBriefing } = require("./src/groq");
 const { scorePeople } = require("./src/score");
+const { commitAnalysisReader, saveCommitAnalysis } = require("./src/commits");
 const { openDatabase } = require("./src/db");
 const {
   normalizeUsername,
@@ -29,8 +30,16 @@ const {
   setProjectShared,
   removeUserProject,
 } = require("./src/repos");
-const { personCode, displayNameFor, validNickname, accountView, deleteAccount } = require("./src/account");
+const {
+  personCode,
+  displayNamesFor,
+  validNickname,
+  validLanguage,
+  accountView,
+  deleteAccount,
+} = require("./src/account");
 const { oauthReady, authorizeUrl, takeState, githubIdentity } = require("./src/oauth");
+const { langOf, message } = require("./src/messages");
 
 function loadEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -58,19 +67,47 @@ const types = {
   ".js": "text/javascript; charset=utf-8",
 };
 
+const HTTPS_SITE = /^https:\/\//i.test(process.env.PUBLIC_URL || "");
+const JUDGES_PER_HOUR = Number(process.env.JUDGE_LIMIT_PER_HOUR) || 3;
+const HOUR_MS = 60 * 60 * 1000;
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; "),
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "same-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  ...(HTTPS_SITE ? { "Strict-Transport-Security": "max-age=15552000" } : {}),
+};
+
 function send(response, status, body, type, extraHeaders) {
-  response.writeHead(status, { "Content-Type": type, ...(extraHeaders || {}) });
+  response.writeHead(status, { ...SECURITY_HEADERS, "Content-Type": type, ...(extraHeaders || {}) });
   response.end(body);
 }
 
 function sendJson(response, status, payload, extraHeaders) {
-  send(response, status, JSON.stringify(payload), "application/json; charset=utf-8", extraHeaders);
+  send(response, status, JSON.stringify(payload), "application/json; charset=utf-8", {
+    "Cache-Control": "no-store",
+    ...(extraHeaders || {}),
+  });
 }
 
 function redirect(response, location) {
-  response.writeHead(302, { Location: location });
+  response.writeHead(302, { ...SECURITY_HEADERS, Location: location });
   response.end();
 }
+
+class BadRequest extends Error {}
 
 function readBody(request) {
   return new Promise((resolve, reject) => {
@@ -79,7 +116,7 @@ function readBody(request) {
     request.on("data", (chunk) => {
       size += chunk.length;
       if (size > 1_000_000) {
-        reject(new Error("요청이 너무 큽니다."));
+        reject(new BadRequest("body too large"));
         request.destroy();
         return;
       }
@@ -91,7 +128,11 @@ function readBody(request) {
 }
 
 async function readJson(request) {
-  return JSON.parse(await readBody(request) || "{}");
+  try {
+    return JSON.parse(await readBody(request) || "{}");
+  } catch (error) {
+    throw error instanceof BadRequest ? error : new BadRequest("invalid json");
+  }
 }
 
 function sessionCookie(session, secure) {
@@ -106,8 +147,30 @@ function sessionCookie(session, secure) {
   return parts.join("; ");
 }
 
-function clearSessionCookie() {
-  return "sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0";
+function clearSessionCookie(secure) {
+  return `sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? "; Secure" : ""}`;
+}
+
+function clientAddress(request) {
+  if (process.env.TRUST_PROXY === "1") {
+    const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    if (forwarded) return forwarded;
+  }
+  return request.socket.remoteAddress || "unknown";
+}
+
+const judgeLog = new Map();
+
+function takeJudgeSlot(key) {
+  const now = Date.now();
+  const recent = (judgeLog.get(key) || []).filter((at) => now - at < HOUR_MS);
+  if (recent.length >= JUDGES_PER_HOUR) {
+    judgeLog.set(key, recent);
+    return { ok: false, minutes: Math.max(1, Math.ceil((HOUR_MS - (now - recent[0])) / 60_000)) };
+  }
+  recent.push(now);
+  judgeLog.set(key, recent);
+  return { ok: true, left: JUDGES_PER_HOUR - recent.length };
 }
 
 async function verifyPassword(user, password) {
@@ -122,17 +185,9 @@ async function verifyPassword(user, password) {
   return "ok";
 }
 
-function passwordFailure(response, result) {
-  if (result === "locked") {
-    sendJson(response, 429, { ok: false, failureReason: "시도가 너무 많아 15분 동안 할 수 없습니다." });
-  } else {
-    sendJson(response, 401, { ok: false, failureReason: "지금 비밀번호가 맞지 않습니다." });
-  }
-}
-
 function freshAccount(userId) {
   return accountView(db.prepare(`
-    SELECT id, username, nickname, account_public, created_at, github_login FROM users WHERE id = ?
+    SELECT id, username, nickname, account_public, created_at, github_login, language FROM users WHERE id = ?
   `).get(userId));
 }
 
@@ -152,25 +207,44 @@ function rankedPeople() {
     rank: index + 1,
     login: row.login,
     code: personCode(row.login),
-    name: displayNameFor(row.login, accounts.get(row.login.toLowerCase())),
+    name: displayNamesFor(row.login, accounts.get(row.login.toLowerCase())),
     total: row.total,
     projects: row.projects,
   }));
 }
 
+function anonymousPeople(contributions, user) {
+  const accounts = accountsByLogin();
+  const mine = user && user.github_login ? user.github_login.toLowerCase() : null;
+  return contributions.map(({ author, ...row }) => {
+    const isAgent = Boolean(row.detail && row.detail.isAgent);
+    return {
+      ...row,
+      name: isAgent ? { ko: author, en: author } : displayNamesFor(author, accounts.get(author.toLowerCase())),
+      code: isAgent ? null : personCode(author),
+      isMe: Boolean(mine && author.toLowerCase() === mine),
+    };
+  });
+}
+
 async function judgeRepo(url) {
-  const inspected = await inspectRepo(url);
+  const analysis = commitAnalysisReader(db);
+  const inspected = await inspectRepo(url, { isCached: analysis.has });
   if (!inspected.ok) {
-    const previous = inspected.repoUrl ? markRepoFailure(db, inspected.repoUrl, inspected.failureReason) : null;
-    return { ok: false, failureReason: inspected.failureReason, previous };
+    if (inspected.repoUrl) markRepoFailure(db, inspected.repoUrl, inspected.failureCode);
+    return { ok: false, failureCode: inspected.failureCode };
   }
-  const analysis = await analyzePeople(inspected.contributions);
+  const fresh = await analyzePeople(inspected.contributions, analysis);
+  if (fresh.length) {
+    saveCommitAnalysis(db, fresh, process.env.GROQ_MODEL);
+    for (const row of fresh) analysis.remember(row.sha, row);
+  }
   const people = scorePeople(inspected.contributions, analysis);
   const briefing = await writeBriefing({
     ...inspected,
     peopleWork: people
       .filter((row) => row.detail.workSource === "code")
-      .map((row) => ({ person: row.author, work: row.work })),
+      .map((row) => ({ work: row.work })),
   });
   const repo = saveRepo(db, {
     repoUrl: inspected.repoUrl,
@@ -181,12 +255,7 @@ async function judgeRepo(url) {
     algorithms: briefing.algorithms,
     features: briefing.features,
   });
-  return {
-    ok: true,
-    repo,
-    briefingSource: briefing.briefingSource,
-    analyzedPeople: Object.keys(analysis).length,
-  };
+  return { ok: true, repo, briefingSource: briefing.briefingSource, newlyAnalyzed: fresh.length };
 }
 
 const REPO_LIST_TTL_MS = 5 * 60 * 1000;
@@ -208,16 +277,32 @@ function myProjectView(userId, login, repoId) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
   const user = userFromRequest(db, request);
-  const secure = Boolean(request.socket.encrypted);
+  const lang = langOf(request);
+  const secure = Boolean(request.socket.encrypted) || HTTPS_SITE;
+  const fail = (status, key, params, extra) => {
+    sendJson(response, status, { ok: false, failureCode: key, failureReason: message(lang, key, params), ...(extra || {}) });
+  };
   const needUser = () => {
     if (user) return true;
-    sendJson(response, 401, { ok: false, failureReason: "로그인이 필요합니다." });
+    fail(401, "loginRequired");
     return false;
+  };
+  const judgeSlot = (repoUrl) => {
+    if (!parseRepoUrl(repoUrl)) {
+      fail(400, "repoUrlFormat");
+      return null;
+    }
+    const slot = takeJudgeSlot(user ? `user:${user.id}` : `ip:${clientAddress(request)}`);
+    if (!slot.ok) {
+      fail(429, "tooManyJudges", { limit: JUDGES_PER_HOUR, minutes: slot.minutes });
+      return null;
+    }
+    return slot;
   };
 
   try {
     if (request.method === "GET" && url.pathname === "/api/me") {
-      sendJson(response, 200, { user: user ? accountView(user) : null });
+      sendJson(response, 200, { user: user ? accountView(user) : null, judgesPerHour: JUDGES_PER_HOUR });
       return;
     }
 
@@ -244,18 +329,9 @@ const server = http.createServer(async (request, response) => {
 
       if (url.pathname === "/api/account/nickname") {
         const nickname = String(payload.nickname || "").trim();
-        if (!validNickname(nickname)) {
-          sendJson(response, 400, {
-            ok: false,
-            failureReason: "닉네임은 2~20자이고, 특수문자 < > \" ' & # 는 쓸 수 없습니다.",
-          });
-          return;
-        }
+        if (!validNickname(nickname)) return fail(400, "nicknameRule");
         const taken = db.prepare("SELECT id FROM users WHERE lower(nickname) = lower(?) AND id != ?").get(nickname, user.id);
-        if (taken) {
-          sendJson(response, 409, { ok: false, failureReason: "이미 쓰는 닉네임입니다." });
-          return;
-        }
+        if (taken) return fail(409, "nicknameTaken");
         db.prepare("UPDATE users SET nickname = ? WHERE id = ?").run(nickname, user.id);
         sendJson(response, 200, { ok: true, user: freshAccount(user.id) });
         return;
@@ -267,6 +343,13 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (url.pathname === "/api/account/language") {
+        if (!validLanguage(payload.language)) return fail(400, "languageRule");
+        db.prepare("UPDATE users SET language = ? WHERE id = ?").run(payload.language, user.id);
+        sendJson(response, 200, { ok: true, user: freshAccount(user.id) });
+        return;
+      }
+
       if (url.pathname === "/api/account/github/disconnect") {
         db.prepare("UPDATE users SET github_login = NULL, github_id = NULL WHERE id = ?").run(user.id);
         sendJson(response, 200, { ok: true, user: freshAccount(user.id) });
@@ -274,14 +357,11 @@ const server = http.createServer(async (request, response) => {
       }
 
       if (url.pathname === "/api/account/password") {
-        const next = String(payload.newPassword || "");
-        if (next.length < 8) {
-          sendJson(response, 400, { ok: false, failureReason: "새 비밀번호는 8자 이상이어야 합니다." });
-          return;
-        }
+        if (String(payload.newPassword || "").length < 8) return fail(400, "passwordRule");
         const checked = await verifyPassword(user, payload.currentPassword);
-        if (checked !== "ok") return passwordFailure(response, checked);
-        db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(next), user.id);
+        if (checked === "locked") return fail(429, "actionLocked");
+        if (checked !== "ok") return fail(401, "currentPasswordWrong");
+        db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(String(payload.newPassword)), user.id);
         db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?").run(user.id, sessionIdFromRequest(request));
         sendJson(response, 200, { ok: true });
         return;
@@ -289,9 +369,10 @@ const server = http.createServer(async (request, response) => {
 
       if (url.pathname === "/api/account/delete") {
         const checked = await verifyPassword(user, payload.password);
-        if (checked !== "ok") return passwordFailure(response, checked);
+        if (checked === "locked") return fail(429, "actionLocked");
+        if (checked !== "ok") return fail(401, "currentPasswordWrong");
         deleteAccount(db, user.id);
-        sendJson(response, 200, { ok: true }, { "Set-Cookie": clearSessionCookie() });
+        sendJson(response, 200, { ok: true }, { "Set-Cookie": clearSessionCookie(secure) });
         return;
       }
     }
@@ -300,23 +381,15 @@ const server = http.createServer(async (request, response) => {
       const payload = await readJson(request);
       const username = normalizeUsername(payload.username);
       const password = String(payload.password || "");
-      if (!validUsername(username)) {
-        sendJson(response, 400, { ok: false, failureReason: "아이디는 영문, 숫자, 밑줄 3자 이상이어야 합니다." });
-        return;
-      }
-      if (password.length < 8) {
-        sendJson(response, 400, { ok: false, failureReason: "비밀번호는 8자 이상이어야 합니다." });
-        return;
-      }
-      if (db.prepare("SELECT id FROM users WHERE username = ?").get(username)) {
-        sendJson(response, 409, { ok: false, failureReason: "이미 있는 아이디입니다." });
-        return;
-      }
+      if (!validUsername(username)) return fail(400, "usernameRule");
+      if (password.length < 8) return fail(400, "passwordRule");
+      if (db.prepare("SELECT id FROM users WHERE username = ?").get(username)) return fail(409, "usernameTaken");
       const nicknameTaken = db.prepare("SELECT id FROM users WHERE lower(nickname) = lower(?)").get(username);
+      const language = validLanguage(payload.language) ? payload.language : lang;
       const info = db.prepare(`
-        INSERT INTO users (username, password_hash, created_at, nickname, account_public)
-        VALUES (?, ?, ?, ?, 0)
-      `).run(username, await hashPassword(password), new Date().toISOString(), username);
+        INSERT INTO users (username, password_hash, created_at, nickname, account_public, language)
+        VALUES (?, ?, ?, ?, 0, ?)
+      `).run(username, await hashPassword(password), new Date().toISOString(), username, language);
       if (nicknameTaken) {
         db.prepare("UPDATE users SET nickname = ? WHERE id = ?").run(`${username}_${info.lastInsertRowid}`, info.lastInsertRowid);
       }
@@ -331,16 +404,12 @@ const server = http.createServer(async (request, response) => {
       const payload = await readJson(request);
       const username = normalizeUsername(payload.username);
       const password = String(payload.password || "");
-      if (locked(username)) {
-        sendJson(response, 429, { ok: false, failureReason: "시도가 너무 많아 15분 동안 로그인할 수 없습니다." });
-        return;
-      }
+      if (locked(username)) return fail(429, "loginLocked");
       const row = db.prepare("SELECT id, password_hash FROM users WHERE username = ?").get(username);
       const matches = row ? await argon2.verify(row.password_hash, password) : false;
       if (!matches) {
         recordFailure(username);
-        sendJson(response, 401, { ok: false, failureReason: "아이디 또는 비밀번호가 맞지 않습니다." });
-        return;
+        return fail(401, "loginFailed");
       }
       clearFailures(username);
       const session = createSession(db, row.id);
@@ -353,22 +422,23 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/logout") {
       const sid = sessionIdFromRequest(request);
       if (sid) db.prepare("DELETE FROM sessions WHERE id = ?").run(sid);
-      sendJson(response, 200, { ok: true }, { "Set-Cookie": clearSessionCookie() });
+      sendJson(response, 200, { ok: true }, { "Set-Cookie": clearSessionCookie(secure) });
       return;
     }
 
     if (request.method === "POST" && url.pathname === "/api/judge") {
       const payload = await readJson(request);
+      const slot = judgeSlot(payload.url);
+      if (!slot) return;
       const judged = await judgeRepo(payload.url);
-      if (!judged.ok) {
-        sendJson(response, 200, { ok: false, status: "실패", failureReason: judged.failureReason });
-        return;
-      }
+      if (!judged.ok) return fail(200, judged.failureCode, {}, { judgesLeft: slot.left });
       sendJson(response, 200, {
         ...judged.repo,
+        contributions: anonymousPeople(judged.repo.contributions, user),
         ok: true,
         briefingSource: judged.briefingSource,
-        analyzedPeople: judged.analyzedPeople,
+        newlyAnalyzed: judged.newlyAnalyzed,
+        judgesLeft: slot.left,
       });
       return;
     }
@@ -376,7 +446,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/ranking") {
       const query = String(url.searchParams.get("q") || "").trim().toLowerCase();
       const people = rankedPeople()
-        .filter((person) => !query || person.name.toLowerCase().includes(query))
+        .filter((person) => !query || person.name.ko.toLowerCase().includes(query) || person.name.en.toLowerCase().includes(query))
         .slice(0, 100)
         .map(({ login, ...person }) => person);
       sendJson(response, 200, { people });
@@ -386,10 +456,7 @@ const server = http.createServer(async (request, response) => {
     const personMatch = url.pathname.match(/^\/api\/ranking\/([0-9a-f]{16})$/);
     if (request.method === "GET" && personMatch) {
       const person = rankedPeople().find((row) => row.code === personMatch[1]);
-      if (!person) {
-        sendJson(response, 404, { ok: false, failureReason: "정보 없음" });
-        return;
-      }
+      if (!person) return fail(404, "personNotFound");
       const { login, ...shown } = person;
       sendJson(response, 200, { person: shown, projects: personProjects(db, login) });
       return;
@@ -397,10 +464,7 @@ const server = http.createServer(async (request, response) => {
 
     if (url.pathname === "/api/my/projects" || url.pathname.startsWith("/api/my/projects/")) {
       if (!needUser()) return;
-      if (!user.github_login) {
-        sendJson(response, 409, { ok: false, failureReason: "먼저 관리 > 설정에서 GitHub를 연결해 주세요." });
-        return;
-      }
+      if (!user.github_login) return fail(409, "githubRequired");
 
       if (request.method === "GET" && url.pathname === "/api/my/projects") {
         sendJson(response, 200, { githubLogin: user.github_login, projects: userProjects(db, user.id, user.github_login) });
@@ -419,36 +483,37 @@ const server = http.createServer(async (request, response) => {
 
       if (request.method === "POST" && url.pathname === "/api/my/projects") {
         const payload = await readJson(request);
+        const slot = judgeSlot(payload.url);
+        if (!slot) return;
         const judged = await judgeRepo(payload.url);
-        if (!judged.ok) {
-          sendJson(response, 200, { ok: false, failureReason: judged.failureReason });
-          return;
-        }
+        if (!judged.ok) return fail(200, judged.failureCode, {}, { judgesLeft: slot.left });
         if (!myRow(db, judged.repo.id, user.github_login)) {
-          sendJson(response, 200, {
-            ok: false,
-            failureReason: `${judged.repo.name}의 기여자 중에 ${user.github_login}이(가) 없어서 추가하지 않았습니다.`,
-          });
-          return;
+          return fail(200, "notContributor", { repo: judged.repo.name, login: user.github_login }, { judgesLeft: slot.left });
         }
         addUserProject(db, user.id, judged.repo.id);
-        sendJson(response, 200, { ok: true, project: myProjectView(user.id, user.github_login, judged.repo.id) });
+        sendJson(response, 200, {
+          ok: true,
+          project: myProjectView(user.id, user.github_login, judged.repo.id),
+          judgesLeft: slot.left,
+        });
         return;
       }
 
       const rejudgeMatch = url.pathname.match(/^\/api\/my\/projects\/(\d+)\/rejudge$/);
       if (request.method === "POST" && rejudgeMatch) {
         const repoId = Number(rejudgeMatch[1]);
-        if (!ownsProject(db, user.id, repoId)) {
-          sendJson(response, 404, { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
-          return;
-        }
+        if (!ownsProject(db, user.id, repoId)) return fail(404, "projectNotFound");
         const repo = db.prepare("SELECT repo_url FROM repos WHERE id = ?").get(repoId);
+        const slot = judgeSlot(repo.repo_url);
+        if (!slot) return;
         const judged = await judgeRepo(repo.repo_url);
         sendJson(response, 200, {
           ok: judged.ok,
-          failureReason: judged.ok ? null : judged.failureReason,
+          failureCode: judged.ok ? null : judged.failureCode,
+          failureReason: judged.ok ? null : message(lang, judged.failureCode),
           project: myProjectView(user.id, user.github_login, repoId),
+          newlyAnalyzed: judged.ok ? judged.newlyAnalyzed : 0,
+          judgesLeft: slot.left,
         });
         return;
       }
@@ -457,37 +522,32 @@ const server = http.createServer(async (request, response) => {
       if (request.method === "POST" && shareMatch) {
         const repoId = Number(shareMatch[1]);
         const payload = await readJson(request);
-        if (!setProjectShared(db, user.id, repoId, Boolean(payload.shared))) {
-          sendJson(response, 404, { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
-          return;
-        }
+        if (!setProjectShared(db, user.id, repoId, Boolean(payload.shared))) return fail(404, "projectNotFound");
         sendJson(response, 200, { ok: true, project: myProjectView(user.id, user.github_login, repoId) });
         return;
       }
 
       const removeMatch = url.pathname.match(/^\/api\/my\/projects\/(\d+)$/);
       if (request.method === "DELETE" && removeMatch) {
-        const removed = removeUserProject(db, user.id, Number(removeMatch[1]));
-        sendJson(response, removed ? 200 : 404, removed ? { ok: true } : { ok: false, failureReason: "프로젝트를 찾지 못했습니다." });
+        if (!removeUserProject(db, user.id, Number(removeMatch[1]))) return fail(404, "projectNotFound");
+        sendJson(response, 200, { ok: true });
         return;
       }
     }
   } catch (error) {
-    sendJson(response, 400, { ok: false, failureReason: error.message || "요청을 처리하지 못했습니다." });
-    return;
+    if (error instanceof BadRequest) return fail(400, "badRequest");
+    console.error(error);
+    return fail(500, "serverError");
   }
 
-  if (url.pathname.startsWith("/api/")) {
-    sendJson(response, 404, { ok: false, failureReason: "없는 주소입니다." });
-    return;
-  }
+  if (url.pathname.startsWith("/api/")) return fail(404, "notFound");
   if (request.method !== "GET") {
     send(response, 405, "Method not allowed", "text/plain; charset=utf-8");
     return;
   }
   const requested = url.pathname === "/" ? "/index.html" : url.pathname;
   const filePath = path.normalize(path.join(publicDir, requested));
-  if (!filePath.startsWith(publicDir)) {
+  if (!filePath.startsWith(publicDir + path.sep)) {
     send(response, 403, "Forbidden", "text/plain; charset=utf-8");
     return;
   }

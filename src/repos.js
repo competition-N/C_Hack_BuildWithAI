@@ -13,6 +13,26 @@ function readPeople(db, repoId) {
   }));
 }
 
+function bilingual(text) {
+  if (text == null) return null;
+  if (String(text).startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.ko) return { ko: parsed.ko, en: parsed.en || parsed.ko };
+    } catch {}
+  }
+  return { ko: text, en: text };
+}
+
+function briefingOf(row) {
+  return {
+    techSummary: bilingual(row.tech_summary),
+    difficulty: bilingual(row.difficulty),
+    algorithms: bilingual(row.algorithms),
+    features: bilingual(row.features),
+  };
+}
+
 function repoView(db, row) {
   if (!row) return null;
   return {
@@ -20,11 +40,8 @@ function repoView(db, row) {
     repoUrl: row.repo_url,
     name: row.name,
     status: row.status,
-    failureReason: row.failure_reason,
-    techSummary: row.tech_summary,
-    difficulty: row.difficulty,
-    algorithms: row.algorithms,
-    features: row.features,
+    failureCode: row.failure_reason,
+    ...briefingOf(row),
     updatedAt: row.updated_at,
     contributions: readPeople(db, row.id),
   };
@@ -34,7 +51,14 @@ function findRepo(db, repoUrl) {
   return db.prepare("SELECT * FROM repos WHERE repo_url = ?").get(repoUrl);
 }
 
-function saveRepo(db, result) {
+function saveRepo(db, briefing) {
+  const result = {
+    ...briefing,
+    techSummary: JSON.stringify(briefing.techSummary),
+    difficulty: JSON.stringify(briefing.difficulty),
+    algorithms: JSON.stringify(briefing.algorithms),
+    features: JSON.stringify(briefing.features),
+  };
   const now = new Date().toISOString();
   const save = db.transaction(() => {
     const existing = findRepo(db, result.repoUrl);
@@ -138,12 +162,9 @@ function userProjects(db, userId, login) {
     name: row.name,
     repoUrl: row.repo_url,
     status: row.status,
-    failureReason: row.failure_reason,
+    failureCode: row.failure_reason,
     updatedAt: row.updated_at,
-    techSummary: row.tech_summary,
-    features: row.features,
-    difficulty: row.difficulty,
-    algorithms: row.algorithms,
+    ...briefingOf(row),
     peopleCount: db.prepare("SELECT count(*) AS n FROM repo_people WHERE repo_id = ?").get(row.id).n,
     me: login ? myRow(db, row.id, login) : null,
   }));

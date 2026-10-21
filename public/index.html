@@ -7,30 +7,31 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <a class="skip-link" href="#screen">본문으로 건너뛰기</a>
+  <a class="skip-link" href="#screen" data-i18n="skip">본문으로 건너뛰기</a>
   <div class="app">
     <aside class="side">
-      <p class="brand">팀 프로젝트 기여도</p>
-      <nav aria-label="주 메뉴">
+      <p class="brand" data-i18n="brand">팀 프로젝트 기여도</p>
+      <nav id="main-nav" aria-label="주 메뉴">
         <ul class="nav-list">
-          <li><button type="button" data-view="main" aria-current="page">메인</button></li>
-          <li><button type="button" data-view="public">공개 프로젝트</button></li>
-          <li id="nav-login"><button type="button" data-view="login">로그인</button></li>
+          <li><button type="button" data-view="main" data-i18n="nav.main" aria-current="page">메인</button></li>
+          <li><button type="button" data-view="public" data-i18n="nav.public">공개 프로젝트</button></li>
+          <li id="nav-login"><button type="button" data-view="login" data-i18n="nav.login">로그인</button></li>
           <li id="nav-manage" hidden>
-            <button type="button" id="manage-toggle" class="nav-group" aria-expanded="false" aria-controls="manage-menu">관리</button>
+            <button type="button" id="manage-toggle" class="nav-group" aria-expanded="false" aria-controls="manage-menu" data-i18n="nav.manage">관리</button>
             <ul class="submenu" id="manage-menu" hidden>
-              <li><button type="button" data-view="account">설정</button></li>
-              <li><button type="button" data-view="projects">프로젝트 관리</button></li>
+              <li><button type="button" data-view="account" data-i18n="nav.account">설정</button></li>
+              <li><button type="button" data-view="projects" data-i18n="nav.projects">프로젝트 관리</button></li>
             </ul>
           </li>
         </ul>
       </nav>
     </aside>
     <main id="screen" class="content" tabindex="-1">
-      <h1>저장소 판단</h1>
-      <p class="muted">불러오는 중입니다.</p>
+      <h1>팀 프로젝트 기여도</h1>
+      <p class="muted">Loading…</p>
     </main>
   </div>
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

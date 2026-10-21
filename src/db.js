@@ -94,6 +94,20 @@ function openDatabase() {
       PRIMARY KEY (user_id, repo_id)
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS commit_analysis (
+      sha TEXT PRIMARY KEY,
+      github_login TEXT,
+      feature_ko TEXT NOT NULL,
+      feature_en TEXT NOT NULL,
+      tech TEXT NOT NULL,
+      difficulty INTEGER NOT NULL,
+      model TEXT,
+      analyzed_at TEXT NOT NULL
+    );
+  `);
+  const latestUserColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
+  if (!latestUserColumns.includes("language")) db.exec("ALTER TABLE users ADD COLUMN language TEXT");
   const userProjectColumns = db.prepare("PRAGMA table_info(user_projects)").all().map((column) => column.name);
   if (!userProjectColumns.includes("shared")) {
     db.exec("ALTER TABLE user_projects ADD COLUMN shared INTEGER NOT NULL DEFAULT 1");

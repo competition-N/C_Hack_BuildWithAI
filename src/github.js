@@ -78,15 +78,15 @@ function decodeReadme(payload) {
   return Buffer.from(payload.content, "base64").toString("utf8");
 }
 
-async function inspectRepo(url) {
+function failureCodeFor(error) {
+  if (error.status === 404) return "repoNotFound";
+  if (error.status === 403 || error.status === 429) return "githubLimited";
+  return "githubFailed";
+}
+
+async function inspectRepo(url, { isCached = () => false } = {}) {
   const parsed = parseRepoUrl(url);
-  if (!parsed) {
-    return {
-      ok: false,
-      status: "실패",
-      failureReason: "주소는 https://github.com/소유자/저장소 형태여야 합니다.",
-    };
-  }
+  if (!parsed) return { ok: false, failureCode: "repoUrlFormat" };
   const base = `/repos/${parsed.owner}/${parsed.repo}`;
   try {
     const [repo, contributors, languages, readme, commits, pulls, contents] = await Promise.all([
@@ -190,7 +190,10 @@ async function inspectRepo(url) {
       }));
 
     for (const row of ranked) {
-      row.samples = row.listed.slice(0, SAMPLES_PER_PERSON).map((item) => ({ ...item }));
+      row.samples = row.listed
+        .filter((item) => !isCached(item.sha))
+        .slice(0, SAMPLES_PER_PERSON)
+        .map((item) => ({ ...item }));
     }
 
     await Promise.all(ranked.flatMap((row) => row.samples.map(async (sample) => {
@@ -249,14 +252,11 @@ async function inspectRepo(url) {
       connectionOk: true,
     };
   } catch (error) {
+    if (!error.status) console.warn(`GitHub request failed: ${error.message}`);
     return {
       ok: false,
-      status: "실패",
       repoUrl: `https://github.com/${parsed.owner}/${parsed.repo}`,
-      owner: parsed.owner,
-      name: parsed.repo,
-      failureReason: error.message || "GitHub 요청이 거절되었습니다.",
-      connectionOk: false,
+      failureCode: failureCodeFor(error),
     };
   }
 }

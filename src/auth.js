@@ -56,7 +56,7 @@ function userFromRequest(db, request) {
   const id = sessionIdFromRequest(request);
   if (!id) return null;
   const row = db.prepare(`
-    SELECT users.id, users.username, users.nickname, users.account_public, users.created_at, users.github_login
+    SELECT users.id, users.username, users.nickname, users.account_public, users.created_at, users.github_login, users.language
     FROM sessions
     JOIN users ON users.id = sessions.user_id
     WHERE sessions.id = ? AND sessions.expires_at > ?

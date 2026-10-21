@@ -1,56 +1,46 @@
-function featuresFor(person, analyzed) {
-  if (!analyzed) {
+const NOT_ANALYZED = { nameKo: "난이도 분석 안 됨", nameEn: "Difficulty not analyzed" };
+const NOT_READ = { nameKo: "모델이 읽지 않은 커밋 (평균 난이도 적용)", nameEn: "Commits the model did not read (average difficulty)" };
+
+function featuresFor(person, analysis) {
+  const analyzed = person.analyzable
+    ? person.listed.map((commit) => analysis.get(commit.sha)).filter(Boolean)
+    : [];
+  if (!analyzed.length) {
     return person.commits > 0
-      ? [{ name: "난이도 분석 안 됨", tech: "-", difficulty: 1, commits: person.commits, points: person.commits, kind: "unanalyzed" }]
+      ? [{ ...NOT_ANALYZED, tech: "-", difficulty: 1, commits: person.commits, points: person.commits, kind: "unanalyzed" }]
       : [];
   }
-  const listedCount = Math.min(person.listed.length, analyzed.listedCount);
-  const used = new Set();
-  const features = [];
-  for (const feature of analyzed.features) {
-    const indexes = [...new Set(feature.commits)].filter((index) => index < listedCount && !used.has(index));
-    indexes.forEach((index) => used.add(index));
-    if (!indexes.length) continue;
-    features.push({
-      name: feature.name,
-      tech: feature.tech,
-      difficulty: feature.difficulty,
-      commits: indexes.length,
-      points: indexes.length * feature.difficulty,
-      kind: "code",
-    });
+  const groups = new Map();
+  for (const row of analyzed) {
+    const key = `${row.featureKo}\u0000${row.tech}`;
+    if (!groups.has(key)) {
+      groups.set(key, { nameKo: row.featureKo, nameEn: row.featureEn, tech: row.tech, commits: 0, points: 0, kind: "code" });
+    }
+    const group = groups.get(key);
+    group.commits += 1;
+    group.points += row.difficulty;
   }
-  const unassigned = listedCount - used.size;
-  if (unassigned > 0) {
-    features.push({ name: "기능으로 묶이지 않은 커밋", tech: "-", difficulty: 1, commits: unassigned, points: unassigned, kind: "unassigned" });
+  const features = [...groups.values()].map((group) => ({
+    ...group,
+    difficulty: Math.max(1, Math.round(group.points / group.commits)),
+  }));
+  const rest = person.commits - analyzed.length;
+  if (rest > 0) {
+    const points = features.reduce((sum, feature) => sum + feature.points, 0);
+    const average = Math.max(1, Math.round(points / analyzed.length));
+    features.push({ ...NOT_READ, tech: "-", difficulty: average, commits: rest, points: rest * average, kind: "earlier" });
   }
-  const earlier = person.commits - listedCount;
-  if (earlier > 0) {
-    const coded = features.filter((feature) => feature.kind === "code");
-    const commitCount = coded.reduce((sum, feature) => sum + feature.commits, 0);
-    const average = commitCount
-      ? Math.max(1, Math.round(coded.reduce((sum, feature) => sum + feature.points, 0) / commitCount))
-      : 1;
-    features.push({
-      name: "모델이 읽지 않은 커밋 (평균 난이도 적용)",
-      tech: "-",
-      difficulty: average,
-      commits: earlier,
-      points: earlier * average,
-      kind: "earlier",
-    });
-  }
-  return features;
+  return features.sort((a, b) => (a.kind === "earlier") - (b.kind === "earlier") || b.points - a.points);
 }
 
 function scorePeople(people, analysis) {
   return people
     .map((person) => {
-      const analyzed = analysis[person.author];
-      const features = featuresFor(person, analyzed);
+      const features = featuresFor(person, analysis);
       const score = features.reduce((sum, feature) => sum + feature.points, 0);
+      const analyzedCommits = features.filter((feature) => feature.kind === "code").reduce((sum, feature) => sum + feature.commits, 0);
       const unmergedPrs = person.prsOpened - person.prsMerged;
-      const codeWork = features.filter((feature) => feature.kind === "code").map((feature) => feature.name);
+      const codeWork = features.filter((feature) => feature.kind === "code").map((feature) => feature.nameKo);
       let work = codeWork.length ? codeWork : person.messages.slice(0, 5);
       if (!work.length) work = [unmergedPrs > 0 ? `합쳐지지 않은 PR ${unmergedPrs}건` : "기록된 커밋 없음"];
       return {
@@ -59,9 +49,9 @@ function scorePeople(people, analysis) {
         work,
         detail: {
           isAgent: person.isAgent,
-          workSource: analyzed ? "code" : "commits",
+          workSource: analyzedCommits ? "code" : "commits",
           features,
-          analyzedCommits: analyzed ? Math.min(person.listed.length, analyzed.listedCount) : 0,
+          analyzedCommits,
           commits: person.commits,
           agentCommits: person.agentCommits,
           agentLogins: person.agentLogins,
