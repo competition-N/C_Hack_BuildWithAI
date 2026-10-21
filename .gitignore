@@ -1,7 +1,3 @@
-# Personal learning context — kept out of commits by default.
-# This does not keep the conversation out of your AI provider.
-/devpost/learner-profile.md
-
 # Local credentials
 .env
 .env.*
