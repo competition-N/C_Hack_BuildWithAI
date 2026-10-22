@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>앱 지도 — 팀 프로젝트 기여도</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --muted-bg: #f0f2f5;
+      --line: #e2e5e9;
+      --line-strong: #c9ced6;
+      --text: #16181d;
+      --muted: #5b6270;
+      --accent: #1f5fbf;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    }
+    main { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 1.75rem; line-height: 1.3; margin: 0 0 8px; }
+    h2 { font-size: 1.25rem; margin: 40px 0 12px; }
+    h3 { font-size: 1.05rem; margin: 0 0 4px; }
+    p { margin: 0 0 12px; }
+    .lede { color: var(--muted); }
+    section.box, ol.stops > li, details {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 20px;
+    }
+    code {
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.92em;
+      background: var(--muted-bg);
+      border-radius: 4px;
+      padding: 1px 5px;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      background: var(--muted-bg);
+      border-radius: 6px;
+      padding: 12px 14px;
+      overflow-x: auto;
+      margin: 8px 0 0;
+    }
+    pre code { background: none; padding: 0; }
+    ul, ol { padding-left: 1.3em; }
+    ol.stops { list-style: none; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .where { color: var(--muted); font-size: 0.92rem; margin-bottom: 8px; }
+    .flow { width: 100%; height: auto; display: block; }
+    .flow text { font: 13px system-ui, "Segoe UI", "Malgun Gothic", sans-serif; fill: var(--text); }
+    .flow .sub { fill: var(--muted); font-size: 12px; }
+    table { width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { background: var(--muted-bg); font-weight: 600; }
+    summary { cursor: pointer; font-weight: 600; }
+    summary:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    a { color: var(--accent); }
+    .note { color: var(--muted); font-size: 0.92rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>앱 지도 — 팀 프로젝트 기여도</h1>
+  <p class="lede">공개 GitHub 저장소를 넣으면, 모델이 사람마다 커밋을 읽고 기능별로 점수를 매기는 앱입니다. 이 페이지는 나중에 코드를 고치러 돌아왔을 때 어디부터 열면 되는지 알려 주는 안내서입니다.</p>
+
+  <h2>큰 조각</h2>
+  <section class="box">
+    <ul>
+      <li><strong>화면</strong> — <code>public/</code>. 한 페이지 앱입니다. <code>app.js</code>가 화면을 그리고, <code>i18n.js</code>에 한국어·영어 문장이 있습니다.</li>
+      <li><strong>서버</strong> — <code>server.js</code>. 모든 <code>/api/...</code> 경로, 보안 헤더, 한 시간 판단 횟수 제한을 맡습니다.</li>
+      <li><strong>판단</strong> — <code>src/github.js</code>(GitHub에서 읽기), <code>src/groq.js</code>(모델에게 커밋 읽히기), <code>src/commits.js</code>(커밋별 결과 저장), <code>src/score.js</code>(점수 계산).</li>
+      <li><strong>저장</strong> — <code>src/db.js</code>가 SQLCipher로 암호화한 <code>data/app.db</code>를 엽니다. <code>src/repos.js</code>가 판단 결과와 순위를 읽고 씁니다.</li>
+      <li><strong>계정</strong> — <code>src/auth.js</code>(비밀번호, 세션, 로그인 잠금), <code>src/account.js</code>(닉네임, 공개, 언어), <code>src/oauth.js</code>(GitHub 연결).</li>
+    </ul>
+  </section>
+
+  <h2>한 동작 따라가기: 메인에서 "판단하기"</h2>
+  <svg class="flow" viewBox="0 0 820 300" role="img" aria-labelledby="flow-title flow-desc">
+    <title id="flow-title">판단하기 한 번의 흐름</title>
+    <desc id="flow-desc">화면의 판단하기 버튼이 서버의 /api/judge로 가고, judgeRepo가 GitHub에서 읽고, 저장된 커밋 결과를 확인한 뒤 새 커밋만 Groq에 보내고, 점수를 계산해 암호화된 데이터베이스에 저장한 다음 화면에 결과를 돌려줍니다.</desc>
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#5b6270"/>
+      </marker>
+    </defs>
+    <g fill="#ffffff" stroke="#c9ced6">
+      <rect x="10" y="20" width="180" height="64" rx="8"/>
+      <rect x="320" y="20" width="180" height="64" rx="8" stroke="#1f5fbf" stroke-width="2"/>
+      <rect x="630" y="20" width="180" height="64" rx="8"/>
+      <rect x="630" y="118" width="180" height="64" rx="8"/>
+      <rect x="320" y="118" width="180" height="64" rx="8" stroke="#1f5fbf" stroke-width="2"/>
+      <rect x="10" y="118" width="180" height="64" rx="8"/>
+      <rect x="320" y="216" width="180" height="64" rx="8"/>
+    </g>
+    <text x="100" y="48" text-anchor="middle">1. 판단하기 버튼</text>
+    <text class="sub" x="100" y="68" text-anchor="middle">public/app.js · bindMain</text>
+    <text x="410" y="48" text-anchor="middle">2. POST /api/judge</text>
+    <text class="sub" x="410" y="68" text-anchor="middle">server.js · judgeRepo</text>
+    <text x="720" y="48" text-anchor="middle">GitHub에서 읽기</text>
+    <text class="sub" x="720" y="68" text-anchor="middle">src/github.js · inspectRepo</text>
+    <text x="720" y="146" text-anchor="middle">새 커밋만 모델로</text>
+    <text class="sub" x="720" y="166" text-anchor="middle">src/groq.js · analyzePeople</text>
+    <text x="410" y="146" text-anchor="middle">3. 기능별 점수</text>
+    <text class="sub" x="410" y="166" text-anchor="middle">src/score.js · scorePeople</text>
+    <text x="100" y="146" text-anchor="middle">결과 표와 요약</text>
+    <text class="sub" x="100" y="166" text-anchor="middle">public/app.js · mainView</text>
+    <text x="410" y="244" text-anchor="middle">암호화된 저장</text>
+    <text class="sub" x="410" y="264" text-anchor="middle">src/commits.js · src/repos.js</text>
+    <g stroke="#5b6270" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+      <line x1="190" y1="52" x2="316" y2="52"/>
+      <line x1="500" y1="52" x2="626" y2="52"/>
+      <line x1="720" y1="84" x2="720" y2="114"/>
+      <line x1="630" y1="150" x2="504" y2="150"/>
+      <line x1="410" y1="182" x2="410" y2="212"/>
+      <line x1="320" y1="150" x2="194" y2="150"/>
+    </g>
+  </svg>
+  <p class="note">굵은 파란 테두리 두 곳이 아래 경로의 2번, 3번 정류장입니다.</p>
+
+  <h2>세 정류장 (참고 경로)</h2>
+  <p class="note">이 경로는 아직 함께 따라가 보지 않은 참고용입니다. 편집기에서 파일을 열고 이름으로 찾으면 됩니다. 줄 번호는 커밋 <code>af18571</code> 기준이며 코드가 바뀌면 달라질 수 있습니다.</p>
+  <ol class="stops">
+    <li>
+      <h3>1. 버튼을 누르면 — <code>public/app.js</code></h3>
+      <p class="where">찾기: <code>function bindMain</code> (약 717줄)</p>
+      <p>판단하기 폼이 주소를 <code>/api/judge</code>로 보냅니다. 기다리는 동안 <code>busy()</code>가 버튼을 막고, 429(한 시간 횟수 초과)나 400(주소 형식이 틀림)이면 안내 문장을 띄우고, 성공하면 <code>result</code>에 담아 <code>render()</code>로 다시 그립니다.</p>
+      <pre><code>const { response, payload } = await api(&quot;/api/judge&quot;, { method: &quot;POST&quot;, body: JSON.stringify({ url }) });</code></pre>
+    </li>
+    <li>
+      <h3>2. 서버가 순서를 정하면 — <code>server.js</code></h3>
+      <p class="where">찾기: <code>async function judgeRepo</code> (약 230줄), 경로는 <code>url.pathname === &quot;/api/judge&quot;</code> (약 429줄)</p>
+      <p>판단 한 번의 전체 순서가 이 함수 하나에 있습니다. 저장된 커밋 결과를 먼저 열고, GitHub에서 읽고, 아직 읽지 않은 커밋만 모델에 보내고, 그 결과를 저장한 뒤 점수를 계산합니다. 경로 쪽에서는 결과의 GitHub 아이디를 <code>anonymousPeople</code>로 랜덤 닉네임으로 바꿔서 돌려줍니다.</p>
+      <pre><code>const analysis = commitAnalysisReader(db);
+const inspected = await inspectRepo(url, { isCached: analysis.has });
+const fresh = await analyzePeople(inspected.contributions, analysis);
+// ...
+const people = scorePeople(inspected.contributions, analysis);</code></pre>
+    </li>
+    <li>
+      <h3>3. 점수가 정해지면 — <code>src/score.js</code></h3>
+      <p class="where">찾기: <code>function scorePeople</code> (23줄), <code>function featuresFor</code> (7줄)</p>
+      <p>모델이 읽은 커밋을 (기능, 기술)로 묶고, 기능마다 난이도를 더합니다. 그래서 기능 점수는 (커밋 수 × 난이도)가 되고, 사람 점수는 기능 점수의 합입니다. 모델이 읽지 않은 커밋은 <code>analysis.get</code>이 비어 있어 빠지므로 0점입니다. 화면의 "모델이 읽지 않은 커밋 N개는 점수에 넣지 않음"은 <code>unreadCommits</code>에서 나옵니다.</p>
+      <pre><code>group.commits += 1;
+group.points += row.difficulty;</code></pre>
+    </li>
+  </ol>
+
+  <h2>이걸 바꾸려면 여기부터</h2>
+  <table>
+    <thead><tr><th scope="col">바꾸고 싶은 것</th><th scope="col">시작할 곳</th></tr></thead>
+    <tbody>
+      <tr><td>한 시간 판단 횟수</td><td><code>.env</code>의 <code>JUDGE_LIMIT_PER_HOUR</code>. 세는 방식은 <code>server.js</code>의 <code>takeJudgeSlot</code></td></tr>
+      <tr><td>모델이 읽는 사람 수, 사람당 커밋 수</td><td><code>src/github.js</code>의 <code>SAMPLED_PEOPLE</code>, <code>LISTED_PER_PERSON</code>. 새 커밋 수는 <code>src/groq.js</code>의 <code>NEW_COMMITS_PER_PERSON</code></td></tr>
+      <tr><td>AI 에이전트로 보는 계정 이름</td><td><code>src/github.js</code> 맨 위의 <code>AGENT_LOGIN</code></td></tr>
+      <tr><td>지우는 조작 문장</td><td><code>src/groq.js</code>의 <code>INJECTION_PATTERNS</code></td></tr>
+      <tr><td>점수 계산식</td><td><code>src/score.js</code>의 <code>featuresFor</code>. 바꾸면 메인 설명(<code>public/i18n.js</code>의 <code>guide.*</code>)도 같이 고칩니다</td></tr>
+      <tr><td>화면 문장, 난이도 설명</td><td><code>public/i18n.js</code>. 한국어와 영어가 같은 키를 씁니다(<code>guide.level1</code> 등)</td></tr>
+      <tr><td>서버 오류 문장</td><td><code>src/messages.js</code></td></tr>
+      <tr><td>색, 글자, 간격</td><td><code>design/tokens/*.md</code>에 먼저 적고 <code>public/styles.css</code>의 <code>:root</code>를 맞춥니다</td></tr>
+    </tbody>
+  </table>
+
+  <h2>다시 쓸 수 있는 방법</h2>
+  <section class="box">
+    <p><strong>"같은 입력이면 같은 결과"를 눈에 보이는 기준으로 정하고 확인하기.</strong></p>
+    <p>같은 저장소를 판단할 때마다 점수가 25 → 13 → 17로 흔들렸습니다. 모델은 매번 조금씩 다르게 답하기 때문입니다. "같은 커밋은 늘 같은 점수"를 기준으로 정하고, 커밋 SHA마다 결과를 저장해(<code>src/commits.js</code>의 <code>commitAnalysisReader</code>, <code>saveCommitAnalysis</code>) 새 커밋만 모델에 보내게 바꿨습니다. 그다음 같은 저장소를 세 번 판단해 13점이 그대로인 것을 확인했습니다. 기록은 <code>devpost/checklist.md</code>의 Revisions에 있습니다.</p>
+    <p>다른 프로젝트에서도 AI 모델이 결과를 내는 곳이면, 먼저 "같은 입력을 두 번 넣으면 무엇이 같아야 하는가"를 적고, 실제로 두세 번 넣어 확인해 보세요. 흔들리면 결과를 입력의 고유값(여기서는 커밋 SHA)으로 저장해 다시 쓰는 방법이 있습니다.</p>
+  </section>
+
+  <h2>다시 실행하기</h2>
+  <section class="box">
+    <ol>
+      <li><code>.env.example</code>을 <code>.env</code>로 복사하고 값을 채웁니다. <code>SQLCIPHER_KEY</code>와 <code>SESSION_SECRET</code>이 없으면 서버가 시작하지 않습니다.</li>
+      <li><code>npm install</code> 후 <code>npm start</code>를 실행합니다.</li>
+      <li>브라우저에서 <code>http://localhost:3000</code>을 엽니다. <code>public/index.html</code>을 파일로 직접 열면 동작하지 않습니다.</li>
+    </ol>
+    <p>자세한 설정(GitHub OAuth App, 배포)은 <code>README.md</code>에 있습니다.</p>
+  </section>
+
+  <details>
+    <summary>이 지도에 대해</summary>
+    <p>커밋 <code>af18571</code>의 코드를 보고 만든 스냅숏입니다. 코드가 바뀌면 이 지도와 어긋날 수 있습니다. 함수 이름으로 찾으면 줄 번호가 달라져도 찾을 수 있습니다.</p>
+  </details>
+</main>
+</body>
+</html>

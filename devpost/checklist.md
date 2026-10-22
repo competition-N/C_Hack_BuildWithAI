@@ -51,7 +51,7 @@ Build mode: fast
 
 ## Hands-on Checkpoints
 
-- [ ] Early usable behavior explored — after slice 1, when a real repo ranking and briefing are on screen
+- [x] Early usable behavior explored — after slice 1, when a real repo ranking and briefing are on screen. 학습자가 실제 판단 결과를 보고 "cursoragent가 누구인지, 한 일이 이상하다"고 피드백했고, 이것이 AI 에이전트 합치기와 작업량 × 난이도 점수로 이어졌다.
 - [ ] Final kick-the-tires exploration and feedback completed
 
 ## Final Review
@@ -79,15 +79,17 @@ Build mode: fast
 
 - [ ] Learning activity complete — guided route, focused alternative, prior practice connected, or brief recap
 - [ ] Optional edit and transfer reflection addressed — offered/declined/already covered/not applicable as appropriate
-- [ ] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
+- [x] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse — 커밋 `af18571`의 코드 기준. 경로와 함수 이름을 소스와 대조했고, Edge로 600/900/1280px에서 가로 넘침이 없는 것을 확인했다(Edge 헤드리스는 약 490px보다 좁게 그리지 못해 390px은 확인하지 못했다). 다시 쓸 방법은 "같은 입력이면 같은 결과"(점수 25 → 13 → 17 흔들림 → 커밋 SHA별 저장 → 세 번 판단해 13점 그대로).
 
-Activity and evidence: not started
-Route and stops: not started
+Activity and evidence: 제안함, 학습자 응답 대기 — 집중형(focused alternative). 같은 저장소를 다시 판단해 점수가 그대로인지 보고, 그 근거가 `src/commits.js`의 커밋별 저장인지 확인한다.
+Route and stops: 지도에 참고 경로로 적음(`public/app.js` `bindMain` → `server.js` `judgeRepo` → `src/score.js` `scorePeople`). 함께 따라가지는 않았다.
 Edit outcome: not started
 Reflection: not started
-Activity mode: not started
+Activity mode: focused alternative (계획 우선 경험이 있는 학습자)
 
 ## Revisions
+
+- 5-build 마무리 확인 — 실행 중인 서버에서 순위, 메인 페이지, 보안 헤더(CSP)가 정상이었다. README를 영어로 다시 쓰고 실행 방법, 환경 변수, GitHub OAuth App, 사이트 연동 순서를 넣었다(사이트 주소는 빈칸). 새로 받은 사람의 순서를 따라 임시 폴더에 `.env.example`만 채워 켜 보니, 빈 순위로 정상 시작했고 `data/app.db`는 암호화되어 있었다. `.env.example`의 `GROQ_FALLBACK_MODELS`는 빈 값이면 대체 모델이 꺼지므로 기본값을 적어 두었다.
 
 - 메인 오른쪽에 아무것도 안 보이던 문제 — `app.js`의 `const top`이 브라우저의 `window.top`과 충돌해 스크립트가 죽었다. `topBar`로 바꿨다.
 - 메인 화면 — 학습자 피드백으로 시스템 설명과 판단하기를 같은 화면에 두었다. 로그인·공개 프로젝트는 왼쪽 메뉴로 이어진다.
