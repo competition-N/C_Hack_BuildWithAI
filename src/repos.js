@@ -111,7 +111,8 @@ const notHiddenByOwner = `
 
 function rankingRows(db) {
   return db.prepare(`
-    SELECT min(repo_people.github_login) AS login, sum(repo_people.score) AS total, count(*) AS projects
+    SELECT min(repo_people.github_login) AS login, sum(repo_people.score) AS total, count(*) AS projects,
+           max(coalesce(json_array_length(repo_people.detail, '$.review'), 0)) > 0 AS flagged
     FROM repo_people
     JOIN repos ON repos.id = repo_people.repo_id
     WHERE repos.status = '완료'

@@ -16,7 +16,7 @@
 | `--color-accent` | `#1f5fbf` | 주 버튼, 링크, 초점 | 6.1:1 on surface, 5.7:1 on bg |
 | `--color-accent-strong` | `#174a96` | 주 버튼 hover | 8.5:1 on surface |
 | `--color-on-accent` | `#ffffff` | 주 버튼, 어두운 버튼 글자 | 6.1:1 on accent |
-| `--color-danger` | `#b42318` | 실패, 삭제 | 6.6:1 on surface |
+| `--color-danger` | `#b42318` | 실패, 삭제, 점수 확인 필요 | 6.6:1 on surface |
 | `--color-danger-line` | `#e9c3bf` | 계정 삭제 섹션 테두리 | |
 | `--color-danger-bg` | `#fbeceb` | 삭제 버튼 hover 바탕 | |
 | `--color-success` | `#1d7a46` | 완료 안내 | 5.4:1 on surface |

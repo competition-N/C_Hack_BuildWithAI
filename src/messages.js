@@ -42,8 +42,8 @@ const MESSAGES = {
   projectNotFound: { ko: "프로젝트를 찾지 못했습니다.", en: "Project not found." },
   personNotFound: { ko: "정보 없음", en: "No record" },
   tooManyJudges: {
-    ko: "판단은 한 시간에 {limit}번까지 할 수 있습니다. {minutes}분 뒤에 다시 시도해 주세요.",
-    en: "You can judge up to {limit} times an hour. Please try again in {minutes} minutes.",
+    ko: "판단은 계정과 접속한 네트워크(IP)마다 한 시간에 {limit}번까지 할 수 있습니다. {minutes}분 뒤에 다시 시도해 주세요.",
+    en: "Each account and each network (IP address) can judge up to {limit} times an hour. Please try again in {minutes} minutes.",
   },
   repoUrlFormat: {
     ko: "주소는 https://github.com/소유자/저장소 형태여야 합니다.",

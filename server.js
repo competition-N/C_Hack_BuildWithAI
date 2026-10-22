@@ -69,6 +69,7 @@ const types = {
 
 const HTTPS_SITE = /^https:\/\//i.test(process.env.PUBLIC_URL || "");
 const JUDGES_PER_HOUR = Number(process.env.JUDGE_LIMIT_PER_HOUR) || 3;
+const JUDGES_PER_IP_HOUR = Number(process.env.JUDGE_LIMIT_PER_IP_HOUR) || JUDGES_PER_HOUR;
 const HOUR_MS = 60 * 60 * 1000;
 const SECURITY_HEADERS = {
   "Content-Security-Policy": [
@@ -161,16 +162,24 @@ function clientAddress(request) {
 
 const judgeLog = new Map();
 
-function takeJudgeSlot(key) {
+function takeJudgeSlot(buckets) {
   const now = Date.now();
-  const recent = (judgeLog.get(key) || []).filter((at) => now - at < HOUR_MS);
-  if (recent.length >= JUDGES_PER_HOUR) {
-    judgeLog.set(key, recent);
-    return { ok: false, minutes: Math.max(1, Math.ceil((HOUR_MS - (now - recent[0])) / 60_000)) };
+  const windows = buckets.map(({ key, limit }) => ({
+    key,
+    limit,
+    recent: (judgeLog.get(key) || []).filter((at) => now - at < HOUR_MS),
+  }));
+  const full = windows.filter((window) => window.recent.length >= window.limit);
+  if (full.length) {
+    for (const window of windows) judgeLog.set(window.key, window.recent);
+    const waitMs = Math.max(...full.map((window) => HOUR_MS - (now - window.recent[window.recent.length - window.limit])));
+    return { ok: false, limit: Math.min(...full.map((window) => window.limit)), minutes: Math.max(1, Math.ceil(waitMs / 60_000)) };
   }
-  recent.push(now);
-  judgeLog.set(key, recent);
-  return { ok: true, left: JUDGES_PER_HOUR - recent.length };
+  for (const window of windows) {
+    window.recent.push(now);
+    judgeLog.set(window.key, window.recent);
+  }
+  return { ok: true, left: Math.min(...windows.map((window) => window.limit - window.recent.length)) };
 }
 
 async function verifyPassword(user, password) {
@@ -210,6 +219,7 @@ function rankedPeople() {
     name: displayNamesFor(row.login, accounts.get(row.login.toLowerCase())),
     total: row.total,
     projects: row.projects,
+    flagged: Boolean(row.flagged),
   }));
 }
 
@@ -292,9 +302,11 @@ const server = http.createServer(async (request, response) => {
       fail(400, "repoUrlFormat");
       return null;
     }
-    const slot = takeJudgeSlot(user ? `user:${user.id}` : `ip:${clientAddress(request)}`);
+    const buckets = [{ key: `ip:${clientAddress(request)}`, limit: JUDGES_PER_IP_HOUR }];
+    if (user) buckets.push({ key: `user:${user.id}`, limit: JUDGES_PER_HOUR });
+    const slot = takeJudgeSlot(buckets);
     if (!slot.ok) {
-      fail(429, "tooManyJudges", { limit: JUDGES_PER_HOUR, minutes: slot.minutes });
+      fail(429, "tooManyJudges", { limit: slot.limit, minutes: slot.minutes });
       return null;
     }
     return slot;

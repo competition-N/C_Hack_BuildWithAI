@@ -1,9 +1,12 @@
+const { hasInjection } = require("./injection");
+
 const AGENT_LOGIN = /^(cursoragent|copilot.*|claude.*|codex.*|devin.*|openhands.*|sweep.*)$|\[bot\]$/i;
 const SAMPLED_PEOPLE = 6;
 const LISTED_PER_PERSON = 40;
 const SAMPLES_PER_PERSON = 3;
 const FILES_PER_SAMPLE = 4;
 const PATCH_CHARS = 250;
+const DOC_FILE = /(\.(md|mdx|markdown|txt|rst|adoc)$|(^|\/)(LICENSE|\.gitignore)$)/i;
 
 function parseRepoUrl(input) {
   const trimmed = String(input || "")
@@ -126,7 +129,7 @@ async function inspectRepo(url, { isCached = () => false } = {}) {
       const message = firstLine(commit.commit && commit.commit.message);
       if (!message) return;
       row.seen.add(commit.sha);
-      row.listed.push({ sha: commit.sha, message, viaAgent });
+      row.listed.push({ sha: commit.sha, message, viaAgent, flagged: hasInjection(commit.commit.message) });
       if (row.messages.length < 5) row.messages.push(message);
     };
 
@@ -205,6 +208,8 @@ async function inspectRepo(url, { isCached = () => false } = {}) {
           del: file.deletions,
           patch: String(file.patch || "").slice(0, PATCH_CHARS),
         }));
+        sample.lines = (detail.stats && detail.stats.total) || 0;
+        sample.docOnly = Boolean(detail.files && detail.files.length && detail.files.every((file) => DOC_FILE.test(file.filename)));
         row.additions += (detail.stats && detail.stats.additions) || 0;
         row.deletions += (detail.stats && detail.stats.deletions) || 0;
         for (const file of detail.files || []) row.files.add(file.filename);
@@ -226,7 +231,7 @@ async function inspectRepo(url, { isCached = () => false } = {}) {
       filesChanged: row.files.size,
       sampledCommits: row.samples.filter((sample) => sample.files && sample.files.length).length,
       messages: row.messages,
-      listed: row.listed.map(({ sha, message }) => ({ sha, message })),
+      listed: row.listed.map(({ sha, message, flagged }) => ({ sha, message, flagged })),
       samples: row.samples,
       analyzable: ranked.includes(row),
     }));

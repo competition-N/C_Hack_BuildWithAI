@@ -1,6 +1,8 @@
+const { reviewPerson } = require("./review");
+
 function analyzedCommitsOf(person, analysis) {
   return person.analyzable
-    ? person.listed.map((commit) => analysis.get(commit.sha)).filter(Boolean)
+    ? person.listed.map((commit) => ({ commit, row: analysis.get(commit.sha) })).filter((pair) => pair.row)
     : [];
 }
 
@@ -24,7 +26,7 @@ function scorePeople(people, analysis) {
   return people
     .map((person) => {
       const analyzed = analyzedCommitsOf(person, analysis);
-      const features = featuresFor(analyzed);
+      const features = featuresFor(analyzed.map((pair) => pair.row));
       const score = features.reduce((sum, feature) => sum + feature.points, 0);
       const analyzedCommits = analyzed.length;
       const unmergedPrs = person.prsOpened - person.prsMerged;
@@ -50,6 +52,7 @@ function scorePeople(people, analysis) {
           deletions: person.deletions,
           filesChanged: person.filesChanged,
           sampledCommits: person.sampledCommits,
+          review: reviewPerson(person, analyzed),
         },
       };
     })

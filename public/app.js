@@ -181,15 +181,32 @@ function evidence(detail) {
   return `<div class="evidence">${lines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}</div>`;
 }
 
+function reviewNotes(detail) {
+  const flags = detail && Array.isArray(detail.review) ? detail.review : [];
+  if (!flags.length) return "";
+  const items = flags.map((flag) => `<li>${escapeHtml(t(`review.${flag.code}`, { n: flag.count, avg: flag.average }))}</li>`).join("");
+  return `
+    <div class="review-box" role="note">
+      <p class="review-title">${t("review.title")}</p>
+      <ul>${items}</ul>
+      <p class="small">${t("review.note")}</p>
+    </div>
+  `;
+}
+
+function reviewTag(flagged) {
+  return flagged ? `<span class="tag tag-review">${t("tag.review")}</span>` : "";
+}
+
 function rankingTable(rows) {
   if (!rows || !rows.length) return `<p class="muted">${t("table.empty")}</p>`;
   const body = rows.map((row) => `
     <tr>
       <td class="num">${row.rank}</td>
-      <td><div class="person"><span>${escapeHtml(pick(row.name))}</span>${row.isMe ? `<span class="tag">${t("tag.me")}</span>` : ""}${agentTags(row.detail)}</div></td>
+      <td><div class="person"><span>${escapeHtml(pick(row.name))}</span>${row.isMe ? `<span class="tag">${t("tag.me")}</span>` : ""}${agentTags(row.detail)}${reviewTag(row.detail && row.detail.review && row.detail.review.length)}</div></td>
       <td class="num score">${row.score}</td>
       <td>${featureList(row.detail)}</td>
-      <td>${evidence(row.detail)}</td>
+      <td>${evidence(row.detail)}${reviewNotes(row.detail)}</td>
     </tr>
   `).join("");
   return `
@@ -266,7 +283,7 @@ function systemGuide() {
       </section>
       <section class="section">
         <h3>${t("guide.resultTitle")}</h3>
-        ${list("guide.result", 5)}
+        ${list("guide.result", 6)}
         <p class="muted small">${t("guide.notScored")}</p>
       </section>
       <section class="section">
@@ -338,7 +355,7 @@ function rankingView() {
   const rows = ranking.map((person) => `
     <tr>
       <td class="num">${person.rank}</td>
-      <td><button type="button" class="link-button" data-person="${escapeHtml(person.code)}">${escapeHtml(pick(person.name))}</button></td>
+      <td><div class="person"><button type="button" class="link-button" data-person="${escapeHtml(person.code)}">${escapeHtml(pick(person.name))}</button>${reviewTag(person.flagged)}</div></td>
       <td class="num score">${person.total}</td>
       <td class="num">${person.projects}</td>
     </tr>
@@ -382,6 +399,7 @@ function personView() {
             <span class="muted small num">${t("person.project", { s: project.score, r: project.rank })}</span>
           </div>
           ${featureList(project.detail)}
+          ${reviewNotes(project.detail)}
         </section>
       `).join("")}
     </div>
@@ -590,6 +608,7 @@ function projectDetail(project) {
             </div>
             ${featureList(mine.detail)}
             ${evidence(mine.detail)}
+            ${reviewNotes(mine.detail)}
           </section>`
         : `<p class="muted">${t("detail.noRecord")}</p>`}
       ${docs(project)}

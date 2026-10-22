@@ -106,6 +106,9 @@ function openDatabase() {
       analyzed_at TEXT NOT NULL
     );
   `);
+  const commitColumns = db.prepare("PRAGMA table_info(commit_analysis)").all().map((column) => column.name);
+  if (!commitColumns.includes("lines")) db.exec("ALTER TABLE commit_analysis ADD COLUMN lines INTEGER");
+  if (!commitColumns.includes("doc_only")) db.exec("ALTER TABLE commit_analysis ADD COLUMN doc_only INTEGER");
   const latestUserColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
   if (!latestUserColumns.includes("language")) db.exec("ALTER TABLE users ADD COLUMN language TEXT");
   const userProjectColumns = db.prepare("PRAGMA table_info(user_projects)").all().map((column) => column.name);
