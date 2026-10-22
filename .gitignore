@@ -5,5 +5,31 @@
 
 # SQLCipher database on the VM. Never commit.
 /data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.backup-*
+*.sqlite
+*.sqlite3
+
+# TLS certificates and private keys for a deployed site
+*.pem
+*.key
+*.crt
 
 node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local editor and agent settings
+.cursor/
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
