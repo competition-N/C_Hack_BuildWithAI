@@ -68,6 +68,15 @@ const types = {
 };
 
 const HTTPS_SITE = /^https:\/\//i.test(process.env.PUBLIC_URL || "");
+const BASE_PATH = basePathOf(process.env.PUBLIC_URL);
+
+function basePathOf(publicUrl) {
+  try {
+    return new URL(publicUrl).pathname.replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+}
 const JUDGES_PER_HOUR = Number(process.env.JUDGE_LIMIT_PER_HOUR) || 3;
 const JUDGES_PER_IP_HOUR = Number(process.env.JUDGE_LIMIT_PER_IP_HOUR) || JUDGES_PER_HOUR;
 const HOUR_MS = 60 * 60 * 1000;
@@ -141,7 +150,7 @@ function sessionCookie(session, secure) {
     `sid=${session.id}`,
     "HttpOnly",
     "SameSite=Lax",
-    "Path=/",
+    `Path=${BASE_PATH}/`,
     `Expires=${new Date(session.expires).toUTCString()}`,
   ];
   if (secure) parts.push("Secure");
@@ -149,7 +158,7 @@ function sessionCookie(session, secure) {
 }
 
 function clearSessionCookie(secure) {
-  return `sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? "; Secure" : ""}`;
+  return `sid=; HttpOnly; SameSite=Lax; Path=${BASE_PATH}/; Max-Age=0${secure ? "; Secure" : ""}`;
 }
 
 function clientAddress(request) {
@@ -286,6 +295,11 @@ function myProjectView(userId, login, repoId) {
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
+  if (BASE_PATH) {
+    if (url.pathname === BASE_PATH) return redirect(response, `${BASE_PATH}/${url.search}`);
+    if (url.pathname.startsWith(`${BASE_PATH}/`)) url.pathname = url.pathname.slice(BASE_PATH.length);
+  }
+  const home = (query) => `${BASE_PATH}/?${query}`;
   const user = userFromRequest(db, request);
   const lang = langOf(request);
   const secure = Boolean(request.socket.encrypted) || HTTPS_SITE;
@@ -319,20 +333,20 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "GET" && url.pathname === "/api/github/connect") {
-      if (!user) return redirect(response, "/?github=login");
-      if (!oauthReady()) return redirect(response, "/?github=config");
+      if (!user) return redirect(response, home("github=login"));
+      if (!oauthReady()) return redirect(response, home("github=config"));
       return redirect(response, authorizeUrl(user.id));
     }
 
     if (request.method === "GET" && url.pathname === "/api/github/callback") {
-      if (url.searchParams.get("error")) return redirect(response, "/?github=denied");
-      if (!user || !takeState(url.searchParams.get("state"), user.id)) return redirect(response, "/?github=error");
+      if (url.searchParams.get("error")) return redirect(response, home("github=denied"));
+      if (!user || !takeState(url.searchParams.get("state"), user.id)) return redirect(response, home("github=error"));
       const identity = await githubIdentity(url.searchParams.get("code"));
-      if (!identity) return redirect(response, "/?github=error");
+      if (!identity) return redirect(response, home("github=error"));
       const taken = db.prepare("SELECT id FROM users WHERE github_id = ? AND id != ?").get(identity.id, user.id);
-      if (taken) return redirect(response, "/?github=taken");
+      if (taken) return redirect(response, home("github=taken"));
       db.prepare("UPDATE users SET github_login = ?, github_id = ? WHERE id = ?").run(identity.login, identity.id, user.id);
-      return redirect(response, "/?github=linked");
+      return redirect(response, home("github=linked"));
     }
 
     if (url.pathname.startsWith("/api/account/") && request.method === "POST") {

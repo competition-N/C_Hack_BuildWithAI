@@ -458,7 +458,7 @@ function githubSection() {
   } else {
     body = `
       <p class="muted">${t("github.hint")}</p>
-      <div><a class="button button-dark" href="/api/github/connect">${t("github.connect")}</a></div>
+      <div><a class="button button-dark" href="api/github/connect">${t("github.connect")}</a></div>
     `;
   }
   return `
@@ -683,7 +683,7 @@ function serverDownView() {
   return `
     ${pageHead(t("server.title"), "")}
     <section class="section">
-      <p>${t("server.body")}</p>
+      <p>${t(window.location.protocol === "file:" ? "server.body" : "server.unreachable")}</p>
     </section>
   `;
 }
@@ -708,8 +708,12 @@ function render() {
   bind();
 }
 
+function appPath(path) {
+  return path.replace(/^\//, "");
+}
+
 async function api(path, options) {
-  const response = await fetch(path, {
+  const response = await fetch(appPath(path), {
     ...options,
     headers: { "Content-Type": "application/json", "X-Lang": lang },
   });
@@ -1037,7 +1041,7 @@ async function loadRanking() {
 async function start() {
   setLanguage(initialLanguage());
   try {
-    const meResponse = await fetch("/api/me", { headers: { "X-Lang": lang } });
+    const meResponse = await fetch(appPath("/api/me"), { headers: { "X-Lang": lang } });
     if (!meResponse.ok) throw new Error("no api");
     const payload = await meResponse.json();
     me = payload.user;
@@ -1052,7 +1056,7 @@ async function start() {
   manageOpen = Boolean(me);
   const githubResult = new URLSearchParams(window.location.search).get("github");
   if (githubResult) {
-    window.history.replaceState(null, "", "/");
+    window.history.replaceState(null, "", window.location.pathname);
     await go(me ? "account" : "login");
     const key = `githubNotice.${githubResult}`;
     if (STRINGS.ko[key]) {

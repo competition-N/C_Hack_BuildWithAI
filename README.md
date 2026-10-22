@@ -139,6 +139,26 @@ These steps prepare the site whose address is still blank above. Replace `https:
 5. Start with an empty `data/` folder. The database can only be opened with the `SQLCIPHER_KEY` that created it, and changing `SESSION_SECRET` changes everyone's random nickname. Keep both keys and back up `data/app.db`.
 6. Fill in the **Live site** line at the top of this README.
 
+### Serving under a sub-path
+
+The app can also live under a path of an existing site, such as `https://<your-site>/project/project-score/`. The browser calls the API relative to the page, and the server reads its path from `PUBLIC_URL`.
+
+- Set `PUBLIC_URL` to the full address including the path, without a trailing slash: `PUBLIC_URL=https://<your-site>/project/project-score`. The login cookie is limited to that path, and GitHub sign-in returns to it.
+- Set the OAuth App's callback URL to `https://<your-site>/project/project-score/api/github/callback`.
+- The proxy may either strip the path or pass it through; both work. An nginx example that strips it:
+
+  ```nginx
+  location /project/project-score/ {
+      proxy_pass http://127.0.0.1:3000/;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+  ```
+
+- For a domain with non-ASCII characters, write `PUBLIC_URL` and the OAuth App URLs in punycode, the form browsers send. For example, `남단추.kro.kr` is `xn--q20bs6bj07b.kro.kr`.
+- The Node server must be running. A static host that only serves files cannot run the API.
+- HSTS applies to the whole domain, so serve every page of the main site over HTTPS as well.
+
 ## Project structure
 
 ```

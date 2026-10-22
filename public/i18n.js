@@ -214,6 +214,7 @@ const STRINGS = {
 
     "server.title": "서버에 연결되지 않았습니다",
     "server.body": "이 페이지는 파일로 직접 열면 동작하지 않습니다. 프로젝트 폴더에서 node server.js를 실행한 뒤 http://localhost:3000을 열어 주세요.",
+    "server.unreachable": "서버에서 응답을 받지 못했습니다. 잠시 뒤 새로고침해 주세요.",
     "githubNotice.linked": "GitHub를 연결했습니다.",
     "githubNotice.taken": "그 GitHub 계정은 이미 다른 계정에 연결되어 있습니다.",
     "githubNotice.denied": "GitHub 연결을 취소했습니다.",
@@ -441,6 +442,7 @@ const STRINGS = {
 
     "server.title": "Cannot reach the server",
     "server.body": "This page does not work when opened as a file. Run node server.js in the project folder, then open http://localhost:3000.",
+    "server.unreachable": "The server did not respond. Please refresh in a moment.",
     "githubNotice.linked": "GitHub is connected.",
     "githubNotice.taken": "That GitHub account is already connected to another account.",
     "githubNotice.denied": "GitHub connection was canceled.",
