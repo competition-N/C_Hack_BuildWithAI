@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const argon2 = require("argon2");
 
 const failures = new Map();
+const MAX_FAILURES = 5;
+const LOCK_MS = 15 * 60 * 1000;
 
 function normalizeUsername(username) {
   return String(username || "").trim();
@@ -20,18 +22,28 @@ async function hashPassword(password) {
   });
 }
 
-function locked(username) {
+function currentFailures(username) {
   const entry = failures.get(username);
-  if (!entry) return false;
-  if (entry.until > Date.now()) return true;
-  failures.delete(username);
-  return false;
+  if (!entry) return null;
+  const now = Date.now();
+  const lockExpired = entry.until && entry.until <= now;
+  const attemptsStale = !entry.until && now - entry.firstAt > LOCK_MS;
+  if (lockExpired || attemptsStale) {
+    failures.delete(username);
+    return null;
+  }
+  return entry;
+}
+
+function locked(username) {
+  const entry = currentFailures(username);
+  return Boolean(entry && entry.until);
 }
 
 function recordFailure(username) {
-  const entry = failures.get(username) || { count: 0, until: 0 };
+  const entry = currentFailures(username) || { count: 0, until: 0, firstAt: Date.now() };
   entry.count += 1;
-  if (entry.count >= 5) entry.until = Date.now() + 15 * 60 * 1000;
+  if (entry.count >= MAX_FAILURES) entry.until = Date.now() + LOCK_MS;
   failures.set(username, entry);
 }
 
