@@ -41,6 +41,8 @@ PRD ref: `prd.md > The Core Journey`.
 
 VM의 Node 서버가 페이지를 제공한다. 데모 영상과 공개 GitHub 저장소가 둘 다 필요하고, 홈페이지 주소는 그 영상을 대신하지 않는다. 다른 사람은 그 HTTPS 주소로 가입하고 공개 저장소를 판단할 수 있다.
 
+라이브 주소: https://xn--q20bs6bj07b.kro.kr/project/project-score/ (남단추.kro.kr의 하위 경로). 2026-10-23에 이 주소에서 첫 화면, 기여 순위, 로그인 화면, 언어 바꾸기를 Edge로 확인했다.
+
 필요한 것: Node.js LTS, VM에만 두는 환경변수 `SQLCIPHER_KEY`, `SESSION_SECRET`, `GITHUB_TOKEN`, `GROQ_API_KEY`, `GROQ_MODEL`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `PUBLIC_URL`. 선택으로 `GROQ_FALLBACK_MODELS`, `JUDGE_LIMIT_PER_HOUR`(기본 3), `JUDGE_LIMIT_PER_IP_HOUR`(기본은 계정 한도와 같음), `TRUST_PROXY`(프록시 뒤면 1). 값의 예시는 `.env.example`에만 두고, 실제 값은 커밋하지 않는다. OAuth App의 callback URL은 로컬이면 `http://localhost:3000/api/github/callback`, 배포하면 `https://(홈페이지 주소)/api/github/callback`이다. OAuth App 하나에 callback URL이 하나라서, 로컬용과 배포용 앱을 따로 만든다. 기존 사이트의 하위 경로(예: `/project/project-score/`)에 올릴 때는 `PUBLIC_URL`에 그 경로까지 넣는다. 화면은 API를 페이지 기준 상대 주소로 부르고, 서버는 `PUBLIC_URL`의 경로를 떼어 낸 뒤 처리하며, 로그인 쿠키도 그 경로로 한정한다. 프록시가 경로를 떼든 그대로 넘기든 동작한다.
 
 시작은 프로젝트 루트에서 `node server.js`다. 브라우저로 그 VM의 공개 HTTPS 주소를 연다. 영상에 담을 장면은 메인에서 공개 저장소 하나 판단(기능별 점수, 기술 상세), 가입과 GitHub 연결, 프로젝트 관리에 내 저장소 추가, 계정 공개를 켠 뒤 공개 프로젝트의 기여 순위 검색과 사람 화면이다.

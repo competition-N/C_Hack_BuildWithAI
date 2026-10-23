@@ -2,7 +2,7 @@
 
 Team Contribution reads a public GitHub repository and shows who actually built what. It is made for university team projects, where one or two people often carry the work while others get the same grade.
 
-- **Live site:** _(to be added)_
+- **Live site:** [https://남단추.kro.kr/project/project-score/](https://xn--q20bs6bj07b.kro.kr/project/project-score/)
 - **Demo video:** _(to be added)_
 - **Built for:** the Devpost **[Build With AI: Basics](https://learn-ai-basics.devpost.com/)** hackathon, with the [Devpost Learn Skill Pack](https://github.com/challengepost/learn-ai-basics) (`1-start` → `6-ship`). Contest summary (Korean): [CONTEST.md](./CONTEST.md).
 
@@ -40,10 +40,10 @@ Team Contribution reads a public GitHub repository and shows who actually built 
 
 ## Using the live site
 
-The live site address is not set yet: _(to be added)_.
+Open [https://남단추.kro.kr/project/project-score/](https://xn--q20bs6bj07b.kro.kr/project/project-score/). No installation is needed.
 
 1. Open the site. The main page explains how scoring works under **What this system does**.
-2. Paste a public GitHub repository URL, such as `https://github.com/owner/repo`, and press **Judge**. Most judgments take 10 to 30 seconds; large teams can take 1–2 minutes. Each account and each network (IP address) can judge 3 times per hour.
+2. Paste a public GitHub repository URL, such as `https://github.com/owner/repo`, and press **Judge**. Most judgments take 10 to 30 seconds; large teams can take 1–2 minutes. Each account and each network (IP address) has an hourly judging limit, shown under the **Judge** button.
 3. Open **Public ranking** in the left menu to see everyone's scores. Search by nickname, or select a person to see their projects.
 4. To manage your own projects, open **Sign in** and create an account.
 5. Go to **Manage → Settings** and press **Connect with GitHub**. GitHub asks you to approve the app. The app only reads your public profile and does not ask for repository permissions.
@@ -125,7 +125,7 @@ Never commit `.env`. It is already in `.gitignore`.
 
 ## Connecting a live site
 
-These steps prepare the site whose address is still blank above. Replace `https://<your-site>` with the real address.
+These steps describe how to run your own copy. Replace `https://<your-site>` with your address.
 
 1. Run the app on a server with Node.js 20+ and keep it running (for example with `pm2` or a `systemd` service).
 2. Put it behind a reverse proxy that serves HTTPS, such as Caddy or nginx, forwarding to `http://127.0.0.1:3000`.
@@ -137,7 +137,6 @@ These steps prepare the site whose address is still blank above. Replace `https:
    - **Homepage URL:** `https://<your-site>`
    - **Authorization callback URL:** `https://<your-site>/api/github/callback`
 5. Start with an empty `data/` folder. The database can only be opened with the `SQLCIPHER_KEY` that created it, and changing `SESSION_SECRET` changes everyone's random nickname. Keep both keys and back up `data/app.db`.
-6. Fill in the **Live site** line at the top of this README.
 
 ### Serving under a sub-path
 
