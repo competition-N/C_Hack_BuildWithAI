@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>팀 프로젝트 기여도 — PRD</title>
+  <style>
+    :root {
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --line: #e4d9c8;
+      --paper: #f7f1e6;
+      --card: #fffaf3;
+      --now: #1f6b4a;
+      --now-bg: #e7f3ec;
+      --later: #8a5a12;
+      --later-bg: #f8efd8;
+      --cut: #8d3b32;
+      --cut-bg: #f8e8e4;
+      --accent: #9a4d12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 17px/1.55 "Segoe UI", "Malgun Gothic", sans-serif;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 40px 20px 72px; }
+    .kicker {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge {
+      border: 1px solid var(--now);
+      color: var(--now);
+      background: var(--now-bg);
+      border-radius: 999px;
+      padding: 2px 8px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    h1 { font-size: 40px; line-height: 1.15; margin: 12px 0 8px; }
+    h2 { font-size: 22px; margin: 36px 0 10px; }
+    h3 { font-size: 18px; margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+    .lede { font-size: 19px; }
+    .expand {
+      background: var(--card);
+      border-left: 4px solid var(--accent);
+      padding: 16px 18px;
+      border-radius: 0 12px 12px 0;
+    }
+    figure { margin: 8px 0 0; }
+    svg { width: 100%; height: auto; display: block; }
+    figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+    .loop-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 14px; }
+    .loop-bar button {
+      font: inherit;
+      font-size: 14px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    .loop-bar button[aria-current="step"] {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: var(--ink);
+    }
+    ol.steps { margin: 0; padding-left: 1.2em; }
+    ol.steps li { margin: 0 0 8px; }
+    ol.steps li.is-current { font-weight: 650; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 12px;
+    }
+    .panel h3 { margin-top: 0; }
+    .criteria { margin: 0; padding-left: 1.2em; }
+    .criteria li { margin: 0 0 6px; }
+    details {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin: 10px 0;
+      padding: 0 16px;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 650;
+      padding: 14px 0;
+      list-style: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+      background: var(--accent);
+    }
+    details ul { margin: 0 0 14px; padding-left: 1.2em; }
+    details li { margin: 0 0 6px; }
+    .soft { color: var(--muted); }
+    a { color: var(--accent); }
+    footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
+    @media (max-width: 700px) {
+      h1 { font-size: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="kicker">PRD <span class="badge">approved</span></p>
+    <h1>팀 프로젝트 기여도</h1>
+    <p class="lede">대학생 팀의 팀원, 팀장, 평가자가 공개 저장소 주소로 기여를 확인하고, 공개로 둔 프로젝트는 로그인하지 않은 사람도 본다.</p>
+
+    <h2>Scope에서 이렇게 구체해졌다</h2>
+    <div class="expand">
+      <p>Scope는 GitHub를 연결하면 그 프로젝트 사람들의 순위, 세부 점수, 한 일, 기술 요약, 난이도, 문서, 알고리즘이 보인다고 했다.</p>
+      <p>이제는 경로가 있다. 빈 목록의 추가하기, 공개 저장소 주소, 목록의 진행중·완료·실패, 안의 전체·기여도·문서·설정, 그리고 공개를 켜면 로그인하지 않은 사람도 설명과 기여도를 본다.</p>
+    </div>
+
+    <h2>여정</h2>
+    <figure>
+      <svg viewBox="0 0 900 250" role="img" aria-labelledby="journeyTitle journeyDesc">
+        <title id="journeyTitle">핵심 여정</title>
+        <desc id="journeyDesc">메인을 연 뒤 로그인 목록에서 주소를 추가하면 진행중이 되고, 완료되면 기여도와 문서가 보이며, 공개로 두면 공개 프로젝트에 나온다.</desc>
+        <rect x="16" y="28" width="150" height="78" rx="12" fill="#fffaf3" stroke="#e4d9c8"/>
+        <rect x="198" y="28" width="170" height="78" rx="12" fill="#fffaf3" stroke="#e4d9c8"/>
+        <rect x="400" y="28" width="150" height="78" rx="12" fill="#fffaf3" stroke="#9a4d12" stroke-width="2"/>
+        <rect x="582" y="28" width="150" height="78" rx="12" fill="#fffaf3" stroke="#e4d9c8"/>
+        <rect x="250" y="150" width="200" height="72" rx="12" fill="#fffaf3" stroke="#e4d9c8"/>
+        <rect x="500" y="150" width="220" height="72" rx="12" fill="#fffaf3" stroke="#1f6b4a" stroke-width="2"/>
+        <text x="32" y="58" fill="#5c564c" font-size="13" font-family="Segoe UI, Malgun Gothic, sans-serif">1</text>
+        <text x="32" y="82" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">메인 설명</text>
+        <text x="214" y="58" fill="#5c564c" font-size="13" font-family="Segoe UI, Malgun Gothic, sans-serif">2</text>
+        <text x="214" y="82" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">목록 또는 추가</text>
+        <text x="416" y="58" fill="#5c564c" font-size="13" font-family="Segoe UI, Malgun Gothic, sans-serif">3</text>
+        <text x="416" y="82" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">주소 입력</text>
+        <text x="598" y="58" fill="#5c564c" font-size="13" font-family="Segoe UI, Malgun Gothic, sans-serif">4</text>
+        <text x="598" y="82" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">진행중</text>
+        <text x="266" y="180" fill="#5c564c" font-size="13" font-family="Segoe UI, Malgun Gothic, sans-serif">5</text>
+        <text x="266" y="204" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">완료 · 기여도 · 문서</text>
+        <text x="516" y="180" fill="#5c564c" font-size="13" font-family="Segoe UI, Malgun Gothic, sans-serif">6</text>
+        <text x="516" y="204" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">공개 프로젝트</text>
+        <path d="M166 67 H198" stroke="#9a4d12" stroke-width="2"/>
+        <path d="M368 67 H400" stroke="#9a4d12" stroke-width="2"/>
+        <path d="M550 67 H582" stroke="#9a4d12" stroke-width="2"/>
+        <path d="M657 106 V150 H720" stroke="#9a4d12" stroke-width="2" fill="none"/>
+        <path d="M350 186 H500" stroke="#1f6b4a" stroke-width="2"/>
+      </svg>
+      <figcaption>주소 하나로 목록의 상태가 바뀌고, 완료된 기여도·문서가 보이면 개념 증명이 선다. 공개는 그 결과를 로그인하지 않은 사람에게 여는 단계다.</figcaption>
+    </figure>
+
+    <div class="loop-bar" role="group" aria-label="여정 단계">
+      <button type="button" data-step="1" aria-current="step">1 메인</button>
+      <button type="button" data-step="2">2 목록</button>
+      <button type="button" data-step="3">3 주소</button>
+      <button type="button" data-step="4">4 상태</button>
+      <button type="button" data-step="5">5 결과</button>
+      <button type="button" data-step="6">6 공개</button>
+    </div>
+    <ol class="steps">
+      <li data-step="1" class="is-current">왼쪽 전체 높이에 메인, 공개 프로젝트, 로그인. 오른쪽은 설명.</li>
+      <li data-step="2">아이디와 비밀번호가 맞으면 그 사람의 프로젝트 목록. 비어 있으면 추가하기.</li>
+      <li data-step="3">공개 저장소 주소를 넣으면 진행이 시작된다. 웹훅은 없다.</li>
+      <li data-step="4">목록으로 돌아오고 그 항목은 진행중이다. 끝나면 완료, 안 되면 실패와 사유.</li>
+      <li data-step="5">안에서 전체, 기여도(순위·세부 점수·한 일), 문서(기술 요약·난이도·알고리즘), 설정.</li>
+      <li data-step="6">설정에서 공개로 두면 로그인하지 않은 사람도 공개 프로젝트에서 설명과 기여도를 본다.</li>
+    </ol>
+
+    <h2>화면 배치</h2>
+    <figure>
+      <svg viewBox="0 0 900 220" role="img" aria-labelledby="layoutTitle layoutDesc">
+        <title id="layoutTitle">왼쪽 열과 상단의 관계</title>
+        <desc id="layoutDesc">왼쪽 열은 화면 위에서 아래까지 차지한다. 프로젝트 이름과 서브 카테고리 상단은 왼쪽 열의 오른쪽에만 있다.</desc>
+        <rect x="20" y="16" width="180" height="188" rx="8" fill="#1c1915"/>
+        <text x="36" y="48" fill="#f7f1e6" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">메인</text>
+        <text x="36" y="80" fill="#f7f1e6" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">공개 프로젝트</text>
+        <text x="36" y="112" fill="#f7f1e6" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">로그인</text>
+        <rect x="216" y="16" width="660" height="52" rx="8" fill="#fffaf3" stroke="#9a4d12" stroke-width="2"/>
+        <text x="232" y="48" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">프로젝트 이름 · 전체 · 기여도 · 문서 · 설정</text>
+        <rect x="216" y="80" width="660" height="124" rx="8" fill="#fffaf3" stroke="#e4d9c8"/>
+        <text x="232" y="128" fill="#5c564c" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">오른쪽 내용</text>
+      </svg>
+      <figcaption>느낌의 참고는 <a href="https://alkapa.gg/neverness-to-everness/characters/sagiri">이환 사키리 가이드</a>다. 글자와 색은 더 정하지 않았다. 왼쪽은 왼쪽 전체를 먹고, 상단은 그 왼쪽에 들어가지 않는다.</figcaption>
+    </figure>
+
+    <h2>화면마다</h2>
+
+    <details open>
+      <summary>프로젝트 목록과 추가하기</summary>
+      <p>아이디와 비밀번호가 맞으면 그 사람의 목록이 나온다. 목록이 비어 있으면 추가하기만 있다. 공개 저장소 주소를 넣고 진행하면 목록으로 돌아가 그 항목이 진행중이다.</p>
+      <h3>비었을 때와 확인</h3>
+      <ul class="criteria">
+        <li>아이디와 비밀번호가 맞으면 그 사람의 목록이 보인다.</li>
+        <li>목록이 비어 있으면 추가하기가 보인다.</li>
+        <li>주소를 넣고 진행하면 그 항목이 진행중으로 보인다.</li>
+        <li>웹훅 연결은 보이지 않는다.</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>진행중, 완료, 실패</summary>
+      <p>항목을 열면 전체가 결과다. 처음 진행중은 "진행중". 실패는 "실패"와 실패 사유. 갱신이 없으면 이전 내용. 모든 내용이 갱신되면 완료.</p>
+      <ul class="criteria">
+        <li>처음 진행중의 전체에 "진행중"이 보인다.</li>
+        <li>실패에는 "실패"와 실패 사유가 보인다.</li>
+        <li>갱신되지 않으면 이전 내용이 남는다.</li>
+        <li>갱신이 끝나면 목록이 완료로 바뀐다.</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>기여도, 문서, 설정</summary>
+      <p>기여도는 순위, 세부 점수, 한 일. 문서는 기술 요약, 난이도, 알고리즘. 설정은 삭제, 연동 확인, 공개/비공개. 공개는 로그인하지 않은 사람을 포함해 다른 사람이 보게 한다.</p>
+      <ul class="criteria">
+        <li>완료의 기여도에서 순위, 세부 점수, 한 일이 보인다.</li>
+        <li>완료의 문서에서 기술 요약, 난이도, 알고리즘이 보인다.</li>
+        <li>공개로 두면 로그인하지 않은 사람이 공개 프로젝트에서 설명과 기여도를 본다.</li>
+        <li>비공개이면 그 목록에 없다. 삭제하면 프로젝트 목록에서 빠진다.</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>공개 프로젝트</summary>
+      <p>공개된 것이 없으면 "정보 없음". 있으면 설명과 기여도.</p>
+      <ul class="criteria">
+        <li>없을 때 "정보 없음"이 보인다.</li>
+        <li>있을 때 설명과 기여도가 보인다.</li>
+      </ul>
+    </details>
+
+    <h2>지금과 나중</h2>
+    <div class="panel">
+      <h3>지금</h3>
+      <p>공개 저장소 주소, 목록의 세 상태, 기여도와 문서, 설정의 공개, 로그인하지 않은 사람의 공개 프로젝트 열람.</p>
+      <h3>나중</h3>
+      <p>웹훅, 비공개 저장소, 아이디를 넣는 계정 로그인, 전 세계 사람 랭킹, 파일 업로드, GitLab.</p>
+      <h3>하지 않음</h3>
+      <p>역할마다 다른 화면. 공유 전 기본 화면을 전 세계 랭킹으로 두기.</p>
+    </div>
+    <p class="soft">완료의 전체는 갱신된 내용 전체를 보여 주고, 기여도·문서는 그 부분을 보여 준다. 계획 승인으로 확정했다.</p>
+
+    <footer>
+      <p>원본은 <code>devpost/prd.md</code>다. 이 페이지는 여정과 화면별 확인 기준을 보는 보조 화면이며, 상태는 approved다.</p>
+    </footer>
+  </main>
+  <script>
+    (function () {
+      var buttons = document.querySelectorAll(".loop-bar button");
+      var items = document.querySelectorAll("ol.steps li");
+      function show(step) {
+        buttons.forEach(function (button) {
+          var on = button.getAttribute("data-step") === step;
+          if (on) button.setAttribute("aria-current", "step");
+          else button.removeAttribute("aria-current");
+        });
+        items.forEach(function (item) {
+          item.classList.toggle("is-current", item.getAttribute("data-step") === step);
+        });
+      }
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          show(button.getAttribute("data-step"));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
