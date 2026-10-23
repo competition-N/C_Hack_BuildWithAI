@@ -1,0 +1,204 @@
+function readPeople(db, repoId) {
+  return db.prepare(`
+    SELECT github_login, score, rank, work, detail
+    FROM repo_people
+    WHERE repo_id = ?
+    ORDER BY rank
+  `).all(repoId).map((row) => ({
+    author: row.github_login,
+    score: row.score,
+    rank: row.rank,
+    work: JSON.parse(row.work),
+    detail: row.detail ? JSON.parse(row.detail) : null,
+  }));
+}
+
+function bilingual(text) {
+  if (text == null) return null;
+  if (String(text).startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.ko) return { ko: parsed.ko, en: parsed.en || parsed.ko };
+    } catch {}
+  }
+  return { ko: text, en: text };
+}
+
+function briefingOf(row) {
+  return {
+    techSummary: bilingual(row.tech_summary),
+    difficulty: bilingual(row.difficulty),
+    algorithms: bilingual(row.algorithms),
+    features: bilingual(row.features),
+  };
+}
+
+function repoView(db, row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    repoUrl: row.repo_url,
+    name: row.name,
+    status: row.status,
+    failureCode: row.failure_reason,
+    ...briefingOf(row),
+    updatedAt: row.updated_at,
+    contributions: readPeople(db, row.id),
+  };
+}
+
+function findRepo(db, repoUrl) {
+  return db.prepare("SELECT * FROM repos WHERE repo_url = ?").get(repoUrl);
+}
+
+function saveRepo(db, briefing) {
+  const result = {
+    ...briefing,
+    techSummary: JSON.stringify(briefing.techSummary),
+    difficulty: JSON.stringify(briefing.difficulty),
+    algorithms: JSON.stringify(briefing.algorithms),
+    features: JSON.stringify(briefing.features),
+  };
+  const now = new Date().toISOString();
+  const save = db.transaction(() => {
+    const existing = findRepo(db, result.repoUrl);
+    let repoId;
+    if (existing) {
+      db.prepare(`
+        UPDATE repos
+        SET repo_url = ?, name = ?, status = '완료', failure_reason = NULL,
+            tech_summary = ?, difficulty = ?, algorithms = ?, features = ?, updated_at = ?
+        WHERE id = ?
+      `).run(result.repoUrl, result.name, result.techSummary, result.difficulty, result.algorithms, result.features, now, existing.id);
+      repoId = existing.id;
+    } else {
+      repoId = db.prepare(`
+        INSERT INTO repos (repo_url, name, status, tech_summary, difficulty, algorithms, features, updated_at)
+        VALUES (?, ?, '완료', ?, ?, ?, ?, ?)
+      `).run(result.repoUrl, result.name, result.techSummary, result.difficulty, result.algorithms, result.features, now).lastInsertRowid;
+    }
+    db.prepare("DELETE FROM repo_people WHERE repo_id = ?").run(repoId);
+    const insert = db.prepare(`
+      INSERT INTO repo_people (repo_id, github_login, score, rank, work, detail)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    for (const person of result.people) {
+      insert.run(repoId, person.author, person.score, person.rank, JSON.stringify(person.work), JSON.stringify(person.detail));
+    }
+    return repoId;
+  });
+  const repoId = save();
+  return repoView(db, db.prepare("SELECT * FROM repos WHERE id = ?").get(repoId));
+}
+
+function markRepoFailure(db, repoUrl, reason) {
+  const existing = findRepo(db, repoUrl);
+  if (!existing) return null;
+  db.prepare("UPDATE repos SET failure_reason = ?, updated_at = ? WHERE id = ?")
+    .run(reason, new Date().toISOString(), existing.id);
+  return repoView(db, db.prepare("SELECT * FROM repos WHERE id = ?").get(existing.id));
+}
+
+const notHiddenByOwner = `
+  NOT EXISTS (
+    SELECT 1 FROM user_projects
+    JOIN users ON users.id = user_projects.user_id
+    WHERE user_projects.repo_id = repo_people.repo_id
+      AND user_projects.shared = 0
+      AND repo_people.github_login = users.github_login
+  )
+`;
+
+function rankingRows(db) {
+  return db.prepare(`
+    SELECT min(repo_people.github_login) AS login, sum(repo_people.score) AS total, count(*) AS projects,
+           max(coalesce(json_array_length(repo_people.detail, '$.review'), 0)) > 0 AS flagged
+    FROM repo_people
+    JOIN repos ON repos.id = repo_people.repo_id
+    WHERE repos.status = '완료'
+      AND coalesce(json_extract(repo_people.detail, '$.isAgent'), 0) = 0
+      AND repo_people.score > 0
+      AND ${notHiddenByOwner}
+    GROUP BY lower(repo_people.github_login)
+    ORDER BY total DESC, lower(login)
+  `).all();
+}
+
+function personProjects(db, login) {
+  return db.prepare(`
+    SELECT repos.id, repos.name, repos.repo_url, repos.updated_at, repo_people.score, repo_people.rank,
+           repo_people.work, repo_people.detail
+    FROM repo_people
+    JOIN repos ON repos.id = repo_people.repo_id
+    WHERE repos.status = '완료' AND repo_people.github_login = ? AND repo_people.score > 0 AND ${notHiddenByOwner}
+    ORDER BY repo_people.score DESC
+  `).all(login).map((row) => ({
+    repoId: row.id,
+    name: row.name,
+    repoUrl: row.repo_url,
+    updatedAt: row.updated_at,
+    score: row.score,
+    rank: row.rank,
+    work: JSON.parse(row.work),
+    detail: row.detail ? JSON.parse(row.detail) : null,
+  }));
+}
+
+function myRow(db, repoId, login) {
+  const row = db.prepare(`
+    SELECT score, rank, work, detail FROM repo_people WHERE repo_id = ? AND github_login = ?
+  `).get(repoId, login);
+  if (!row) return null;
+  return { score: row.score, rank: row.rank, work: JSON.parse(row.work), detail: row.detail ? JSON.parse(row.detail) : null };
+}
+
+function userProjects(db, userId, login) {
+  return db.prepare(`
+    SELECT repos.*, user_projects.shared AS shared FROM user_projects
+    JOIN repos ON repos.id = user_projects.repo_id
+    WHERE user_projects.user_id = ?
+    ORDER BY repos.updated_at DESC
+  `).all(userId).map((row) => ({
+    repoId: row.id,
+    shared: Boolean(row.shared),
+    name: row.name,
+    repoUrl: row.repo_url,
+    status: row.status,
+    failureCode: row.failure_reason,
+    updatedAt: row.updated_at,
+    ...briefingOf(row),
+    peopleCount: db.prepare("SELECT count(*) AS n FROM repo_people WHERE repo_id = ?").get(row.id).n,
+    me: login ? myRow(db, row.id, login) : null,
+  }));
+}
+
+function addUserProject(db, userId, repoId) {
+  db.prepare("INSERT OR IGNORE INTO user_projects (user_id, repo_id, created_at) VALUES (?, ?, ?)")
+    .run(userId, repoId, new Date().toISOString());
+}
+
+function ownsProject(db, userId, repoId) {
+  return Boolean(db.prepare("SELECT 1 FROM user_projects WHERE user_id = ? AND repo_id = ?").get(userId, repoId));
+}
+
+function setProjectShared(db, userId, repoId, shared) {
+  return db.prepare("UPDATE user_projects SET shared = ? WHERE user_id = ? AND repo_id = ?")
+    .run(shared ? 1 : 0, userId, repoId).changes > 0;
+}
+
+function removeUserProject(db, userId, repoId) {
+  return db.prepare("DELETE FROM user_projects WHERE user_id = ? AND repo_id = ?").run(userId, repoId).changes > 0;
+}
+
+module.exports = {
+  saveRepo,
+  markRepoFailure,
+  rankingRows,
+  personProjects,
+  myRow,
+  userProjects,
+  addUserProject,
+  ownsProject,
+  setProjectShared,
+  removeUserProject,
+};

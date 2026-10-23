@@ -1,0 +1,11 @@
+{
+  "name": "team-contribution",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "better-sqlite3-multiple-ciphers": "^13.0.3"
+  }
+}

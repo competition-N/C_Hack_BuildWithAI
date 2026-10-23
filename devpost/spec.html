@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>팀 프로젝트 기여도 — Spec</title>
+  <style>
+    :root {
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --line: #e4d9c8;
+      --paper: #f7f1e6;
+      --card: #fffaf3;
+      --now: #1f6b4a;
+      --now-bg: #e7f3ec;
+      --later: #8a5a12;
+      --later-bg: #f8efd8;
+      --accent: #9a4d12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 17px/1.55 "Segoe UI", "Malgun Gothic", sans-serif;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 40px 20px 72px; }
+    .kicker {
+      display: flex; gap: 10px; align-items: center;
+      color: var(--muted); font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .badge {
+      border: 1px solid var(--now); color: var(--now); background: var(--now-bg);
+      border-radius: 999px; padding: 2px 8px; letter-spacing: 0; text-transform: none;
+    }
+    h1 { font-size: 40px; line-height: 1.15; margin: 12px 0 8px; }
+    h2 { font-size: 22px; margin: 36px 0 10px; }
+    p { margin: 0 0 12px; }
+    .lede { font-size: 19px; }
+    .callout {
+      background: var(--card); border-left: 4px solid var(--accent);
+      padding: 16px 18px; border-radius: 0 12px 12px 0;
+    }
+    figure { margin: 8px 0 0; }
+    svg { width: 100%; height: auto; display: block; }
+    figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+    .loop-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 14px; }
+    .loop-bar button {
+      font: inherit; font-size: 14px; border: 1px solid var(--line);
+      background: var(--card); color: var(--ink); border-radius: 999px; padding: 6px 12px; cursor: pointer;
+    }
+    .loop-bar button[aria-current="step"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    ol.steps { margin: 0; padding-left: 1.2em; }
+    ol.steps li { margin: 0 0 8px; }
+    ol.steps li.is-current { font-weight: 650; }
+    details {
+      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+      margin: 10px 0; padding: 0 16px;
+    }
+    summary { cursor: pointer; font-weight: 650; padding: 14px 0; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before {
+      content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      margin-right: 8px; background: var(--accent);
+    }
+    code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 0.92em; }
+    .soft { color: var(--muted); }
+    a { color: var(--accent); }
+    footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
+    @media (max-width: 700px) { h1 { font-size: 32px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="kicker">Spec <span class="badge">approved</span></p>
+    <h1>팀 프로젝트 기여도</h1>
+    <p class="lede">HTML 페이지를 VM의 Node 서버가 보여 주고, 그 서버만 SQLCipher로 잠긴 SQLite 파일을 연다. 순위는 GitHub, 문장 세 개는 Groq가 만든다.</p>
+
+    <h2>디스크에 남는 문장</h2>
+    <div class="callout">
+      <p>SQLite 데이터베이스 파일은 SQLCipher를 적용하여 AES-256으로 디스크 암호화 저장합니다.</p>
+      <p>비밀번호는 그 안에 암호화된 문장으로 넣지 않습니다. Argon2id 해시만 저장해서, 원문으로 되돌릴 수 없고 맞는지 확인할 수만 있습니다.</p>
+    </div>
+
+    <h2>데이터가 지나가는 길</h2>
+    <figure>
+      <svg viewBox="0 0 900 280" role="img" aria-labelledby="archTitle archDesc">
+        <title id="archTitle">페이지, 서버, 저장, 외부 서비스</title>
+        <desc id="archDesc">브라우저는 Node 서버에만 요청한다. 서버는 SQLCipher 파일을 열고, 점수와 순위는 GitHub에서, 기술 요약과 난이도와 알고리즘 문장은 Groq에서 가져온다.</desc>
+        <rect x="24" y="90" width="180" height="88" rx="14" fill="#fffaf3" stroke="#e4d9c8"/>
+        <rect x="280" y="78" width="200" height="112" rx="14" fill="#fffaf3" stroke="#9a4d12" stroke-width="2"/>
+        <rect x="560" y="24" width="300" height="64" rx="14" fill="#fffaf3" stroke="#1f6b4a"/>
+        <rect x="560" y="108" width="300" height="64" rx="14" fill="#fffaf3" stroke="#8a5a12"/>
+        <rect x="560" y="192" width="300" height="64" rx="14" fill="#1c1915"/>
+        <text x="44" y="128" fill="#1c1915" font-size="18" font-family="Segoe UI, Malgun Gothic, sans-serif">브라우저 페이지</text>
+        <text x="44" y="154" fill="#5c564c" font-size="14" font-family="Segoe UI, Malgun Gothic, sans-serif">public/</text>
+        <text x="300" y="118" fill="#1c1915" font-size="18" font-family="Segoe UI, Malgun Gothic, sans-serif">Node 서버</text>
+        <text x="300" y="144" fill="#5c564c" font-size="14" font-family="Segoe UI, Malgun Gothic, sans-serif">server.js · src/</text>
+        <text x="580" y="62" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">GitHub · 점수와 순위</text>
+        <text x="580" y="146" fill="#1c1915" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">Groq · 문장 세 개</text>
+        <text x="580" y="230" fill="#f7f1e6" font-size="16" font-family="Segoe UI, Malgun Gothic, sans-serif">SQLCipher AES-256 파일</text>
+        <path d="M204 134 H280" stroke="#9a4d12" stroke-width="2"/>
+        <path d="M480 120 H560" stroke="#1f6b4a" stroke-width="2"/>
+        <path d="M480 140 H560" stroke="#8a5a12" stroke-width="2"/>
+        <path d="M480 168 H560" stroke="#1c1915" stroke-width="2"/>
+      </svg>
+      <figcaption>키는 페이지에 두지 않습니다. GitHub 토큰, Groq 키, SQLCipher 열쇠는 VM 환경변수에만 있습니다.</figcaption>
+    </figure>
+
+    <h2>한 번의 판단</h2>
+    <div class="loop-bar" role="group" aria-label="판단 단계">
+      <button type="button" data-step="1" aria-current="step">1 로그인</button>
+      <button type="button" data-step="2">2 주소</button>
+      <button type="button" data-step="3">3 GitHub</button>
+      <button type="button" data-step="4">4 Groq</button>
+      <button type="button" data-step="5">5 공유</button>
+    </div>
+    <ol class="steps">
+      <li data-step="1" class="is-current"><code>src/auth.js</code>가 아이디와 Argon2id 해시를 확인한다. 맞으면 그 사람의 목록. <code>prd.md &gt; 프로젝트 목록</code></li>
+      <li data-step="2"><code>src/projects.js</code>가 주소를 진행중으로 저장한다. <code>prd.md &gt; 추가하기</code></li>
+      <li data-step="3"><code>src/github.js</code>가 기여자, 커밋, PR로 순위와 점수, 한 일을 만든다. <code>prd.md &gt; 기여도</code></li>
+      <li data-step="4"><code>src/groq.js</code>가 기술 요약, 난이도, 알고리즘만 받는다. 실패하면 README로 대체하고 순위는 남긴다. <code>prd.md &gt; 문서</code></li>
+      <li data-step="5">설정의 공유가 켜진 행만 <code>prd.md &gt; 공개 프로젝트</code>에 나온다.</li>
+    </ol>
+
+    <h2>조각</h2>
+    <details open>
+      <summary>로그인과 데이터베이스</summary>
+      <p><code>src/auth.js</code>, <code>src/db.js</code>, <code>data/app.db</code>. 파일은 SQLCipher AES-256. 비밀번호는 해시. 열쇠가 없으면 서버는 시작하지 않는다.</p>
+    </details>
+    <details>
+      <summary>판단, 기여도, 문서</summary>
+      <p><code>src/github.js</code>가 점수를 만들고 <code>src/groq.js</code>가 문장만 만든다. 화면은 <code>public/app.js</code>가 전체, 기여도, 문서, 설정으로 나눈다.</p>
+    </details>
+    <details>
+      <summary>깨지는 곳</summary>
+      <p>잘못된 주소와 비공개 저장소는 실패와 사유. Groq 실패는 대체 문장과 함께 완료. 열쇠가 없으면 암호 없는 파일을 만들지 않는다.</p>
+    </details>
+
+    <p class="soft">시작은 <code>node server.js</code>이고, 브라우저로는 VM의 HTTPS 주소를 연다. 원본은 <code>devpost/spec.md</code>다.</p>
+    <footer>
+      <p>이 페이지는 데이터 흐름과 파일 위치를 보는 보조 화면이며, 상태는 approved다. Markdown이 원본이다.</p>
+    </footer>
+  </main>
+  <script>
+    (function () {
+      var buttons = document.querySelectorAll(".loop-bar button");
+      var items = document.querySelectorAll("ol.steps li");
+      function show(step) {
+        buttons.forEach(function (button) {
+          var on = button.getAttribute("data-step") === step;
+          if (on) button.setAttribute("aria-current", "step");
+          else button.removeAttribute("aria-current");
+        });
+        items.forEach(function (item) {
+          item.classList.toggle("is-current", item.getAttribute("data-step") === step);
+        });
+      }
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          show(button.getAttribute("data-step"));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
