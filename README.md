@@ -3,7 +3,7 @@
 Team Contribution reads a public GitHub repository and shows who actually built what. It is made for university team projects, where one or two people often carry the work while others get the same grade.
 
 - **Live site:** [https://남단추.kro.kr/project/project-score/](https://xn--q20bs6bj07b.kro.kr/project/project-score/)
-- **Demo video:** _(to be added)_
+- **Demo video:** [https://youtu.be/bTxIZfh5dA4](https://youtu.be/bTxIZfh5dA4)
 - **Built for:** the Devpost **[Build With AI: Basics](https://learn-ai-basics.devpost.com/)** hackathon, with the [Devpost Learn Skill Pack](https://github.com/challengepost/learn-ai-basics) (`1-start` → `6-ship`). Contest summary (Korean): [CONTEST.md](./CONTEST.md).
 
 ## What it does
